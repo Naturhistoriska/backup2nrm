@@ -1,6 +1,6 @@
 # backup2nrm
 
-TODO: rewrite for decomission of milou
+TODO: rewrite for decomission of milou.
 
 Backup script for transferring UPPMAX files to NRM.
 
