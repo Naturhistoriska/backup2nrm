@@ -1,31 +1,43 @@
 #!/usr/bin/env perl 
 
-#====================================================================================
-# Use `backup2nrm -h` or `perldoc backup2nrm` or see end of this file for description
-#====================================================================================
+#=======================================================================================#
+# Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this file for description #
+#=======================================================================================#
+
+=pod
+
+    TODO: * Adjust for the fact that project IDS are listed twice on Loves' rackham project:
+            /proj/sllstore2017093/b2016073/b2016073/INBOX
+          * Test to see if the list of INBOXes are correctly returned
+          * See if we need a trailing / in the path for $findinboxes.
+  
+=cut
+
 
 use strict;
 use warnings;
 use Data::Dumper;
 use Getopt::Long;
 use File::Find;
+no warnings "File::Find";
 
-my $nrmuser          = '';                   # Provide your NRM user name here, e.g. 'joebro'
-my $mailuser         = '';                   # Provide your e-mail address here, e.g. 'joe.brown@email.com'
-my $nrmcomputer      = '';                   # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
-my $nrmpath          = '/dnadata/projects/'; # Confirm path with NRM-IT!
+my $nrmuser          = 'loved';                  # Provide your NRM user name here, e.g. 'joebro'
+my $mailuser         = 'love.dalen@nrm.se';      # Provide your e-mail address here, e.g. 'joe.brown@email.com'
+my $nrmcomputer      = 'nrmdna.nrm.se';          # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
+my $nrmpath          = '/dnadata/projects/';     # Confirm path with NRM-IT!
+my $findinboxes      = '/proj/sllstore2017093/'; # Locate inboxes recursively starting in this location.
 
-my $VERBOSE          = 1;                    # Set to 0 for noverbose
-my $timedefault      = '10:00:00';           # Default time (h:mm:ss)
-my $mbsdef           = '20';                 # Default assumed transfer speed (20 MB/sec)
-my $rsynccmd         = "rsync -av -P ";      # Testing standard settings.  See END comments.
-my $rsynccmd_ssh     = ' ';                  # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
+my $VERBOSE          = 1;                        # Set to 0 for noverbose
+my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
+my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
+my $rsynccmd         = "rsync -av -P ";          # Testing standard settings.  See END comments.
+my $rsynccmd_ssh     = ' ';                      # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
 my $rsynccmd_exc     = " --exclude \'best_practice_qc/\' ";
 my $sbatchcmd        = 'sbatch';
-my $milou            = $ENV{HOSTNAME};       # 'milou.uppmax.uu.se';
+my $uppmax           = $ENV{HOSTNAME};           # 'rackham.uppmax.uu.se';
 my $whoami           = $ENV{USER};
-my $milou_user       = $whoami;
-my $autotime         = 0;                    # Autotime is multiplied by an integer (see GetOptions arg below) 
+my $uppmax_user      = $whoami;
+my $autotime         = 0;                        # Autotime is multiplied by an integer (see GetOptions arg below) 
 my $exclude          = 0;
 my $submit           = 0;
 my $time             = q{};
@@ -44,16 +56,27 @@ GetOptions(
     "submit!"         => \$submit,
     "time=s"          => \$time,
     "verbose!"        => \$VERBOSE,
+    "findinboxes=s"   => \$findinboxes,
     "xclude|exclude!" => \$exclude,
     "help"            => sub { exec("perldoc", $0); exit(0); },
 );
+
+if ($findinboxes) {
+    if (! -d $findinboxes) {
+        die "Error: Can not locate directory $findinboxes.\nNeed to provide correct path to where to start looking for INBOXes.\n";
+    }
+    else {
+        find_inboxes($findinboxes);
+        exit;
+    }
+}
 
 if ($nrmuser) {
     $nrmcomputer_user = $nrmuser . '@nrm.se';
 }
 else {
-    $nrmuser = $milou_user; # Try milou user. Might fail!
-    $nrmcomputer_user = $milou_user . '@nrm.se';
+    $nrmuser = $uppmax_user; # Try uppmax user. Might fail!
+    $nrmcomputer_user = $uppmax_user . '@nrm.se';
 }
 
 if ($time) {
@@ -101,18 +124,18 @@ foreach my $string (sort keys %HoH) {
     print $PRINT '#!/bin/bash -l', "\n";
     print $PRINT "\n";
     print $PRINT "## backup2nrm script created $date\n";
-    print $PRINT "## Transfer files from $milou to $nrmcomputer:\n";
+    print $PRINT "## Transfer files from $uppmax to $nrmcomputer:\n";
     print $PRINT "##\n";
     print $PRINT "##    $source -> $destination\n";
     print $PRINT "##\n";
     print $PRINT "## Run script on UPPMAX by: sbatch --test-only $outfile\n";
     print $PRINT "##                and then: sbatch $outfile\n";
     print $PRINT "## Monitor slurm status by:\n";
-    print $PRINT "##    jobinfo -u $milou_user\n";
+    print $PRINT "##    jobinfo -u $uppmax_user\n";
     print $PRINT "## Cancel slurm job by:\n";
     print $PRINT "##    scancel <JOBID>\n";
-    print $PRINT "##    scancel -i -u $milou_user\n";
-    print $PRINT "##    scancel --state=pending -u $milou_user\n";
+    print $PRINT "##    scancel -i -u $uppmax_user\n";
+    print $PRINT "##    scancel --state=pending -u $uppmax_user\n";
     print $PRINT "\n";
     print $PRINT "#SBATCH -J $jobname\n";
     print $PRINT "#SBATCH -A $projectid\n";
@@ -138,11 +161,11 @@ foreach my $string (sort keys %HoH) {
             if ($submit) {
                 system($sbatchcmd, $outfile); # Not checking system submit status
                 print STDERR "Submitted script $outfile to SLURM.\n" if $VERBOSE;
-                print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $milou_user\n" if $VERBOSE;
-                print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $milou_user -i\n" if $VERBOSE;
+                print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
+                print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
             }
             else {
-                print "Run the script on milou by:\n\n  sbatch $outfile\n\n";
+                print "Run the script on uppmax by:\n\n  sbatch $outfile\n\n";
             }
         }
         else {
@@ -251,6 +274,34 @@ sub dd {
     return $mbs;
 }
 
+sub find_inboxes {
+    my ($searchpath) = (@_); # '/proj/sllstore2017093/'
+    use vars qw/*name *dir *prune/;
+    *name   = *File::Find::name;
+    *dir    = *File::Find::dir;
+    *prune  = *File::Find::prune;
+    my (@boxes) = File::Find::find({wanted => \&inboxes}, $searchpath);
+    foreach my $box (@boxes) {
+        if ($box =~ /_nobackup/) {
+            next;
+        }
+        else {
+            print STDOUT $box, "\n";
+        }
+    }
+}
+
+sub inboxes {
+    my @list = ();
+    my ($dev, $ino, $mode, $nlink, $uid, $gid);
+    (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_)) &&
+    -d _ &&
+    /^INBOX\z/s
+    && push(@list, $name);
+    return \@list;
+}
+
+
 =pod
 
 =head1 NAME
@@ -259,7 +310,7 @@ backup2nrm - Backup Files to NRM
 
 =head1 VERSION
 
-Version 20170502
+Version Tue 06 Feb 2018 05:16:56 PM CET
 
 =head1 SYNOPSIS
 
@@ -339,12 +390,14 @@ Internally, NRM user name is send in the form C<"nrmuser@nrm.se"> (and not as C<
 
 =item B<-i, --infile INFILE>
 
-File with a list of directories (full path!) or project names on milou to be backed up.
+File with a list of directories (full path!) or project names on uppmax to be backed up.
 If project ID:s are used, the the C<INBOX> will be used as source and destination.
 
-=item B<-f, --file>
+=item B<-f, --findinboxes=E<lt>/path/to/folderE<gt>>
 
-Same as B<-i>.
+Locate INBOXes starting at the given folder (e.g. '/proj/sllstore2017093/').
+The list is printed to STDOUT and can be redirected to E<lt>fileE<gt>.
+This file can then be used as input to the script.
 
 =item B<-s, --submit>
 
@@ -398,7 +451,7 @@ Johan Nylander L<<johan.nylanderATnrm.se>>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2017 by Johan Nylander.
+This software is copyright (c) 2017,2018 by Johan Nylander.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.

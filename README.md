@@ -1,10 +1,35 @@
 # backup2nrm
 
-TODO: rewrite for decomission of milou.
+TODO: rewrite for decomission of milou:
+
+>Nu börjar det trilla in en hel del nya data från SciLife,
+>så vi måste få ordning på hur vi gör back-up… 
+>Jag lägger nu alla nya data i respektive INBOX på Rackham
+>(dvs tex nya sedimentdatat `P9351` som ligger på
+>`/proj/sllstore2017093/b2014312/b2014312/INBOX/P9351`).
+>
+>Så om det skulle gå att ha ett script som backar upp alla
+>INBOX:ar på `sllstore2017093`
+>så vore det ju trevligt. 
+
+    [nylander@rackham2]$ find /proj/sllstore2017093/ -type d -name INBOX 2>/dev/null > inboxes.list
+
+
 
 Backup script for transferring UPPMAX files to NRM.
 
 Assuming file structure similar to:
+
+- On rackham:
+
+        /proj/sllstore2017093/b2014312/b2014312/INBOX/P9351
+
+- On NRM:
+
+        /dnadata/projects/lovedale/b2014312/INBOX/P9351
+
+
+**OLD:**
 
 - On milou:
 
