@@ -71,7 +71,7 @@ For detailed information, use `backup2nrm -h`
     1. Name and IP address for the NRM backup computer (below called `nrmcomputer`).
     2. User name on the backup computer (prob. same as your Windows user). Below called `nrmuser`.
     3. Directory structure on NRM backup computer (e.g. `/dnadata/projects/`)
-1. Login to UPPMAX (`milou.uppmax.uu.se`)
+1. Login to UPPMAX (`rackham.uppmax.uu.se`)
 2. Clone the repository from [https://github.com/NBISweden/backup2nrm.git](https://github.com/NBISweden/backup2nrm.git), using
     - `git clone https://github.com/NBISweden/backup2nrm.git`
 3. Edit the `backup2nrm` file to add values for

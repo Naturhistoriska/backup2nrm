@@ -1,8 +1,10 @@
 #!/usr/bin/env perl 
 
-#=======================================================================================#
-# Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this file for description #
-#=======================================================================================#
+#=====================================================================
+# Transfer files from UPPMAX's project INBOX to project folder on NRM.
+# Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this
+# file for description.
+#=====================================================================
 
 =pod
 
@@ -21,12 +23,11 @@ use Getopt::Long;
 use File::Find;
 no warnings "File::Find";
 
-my $nrmuser          = 'loved';                  # Provide your NRM user name here, e.g. 'joebro'
-my $mailuser         = 'love.dalen@nrm.se';      # Provide your e-mail address here, e.g. 'joe.brown@email.com'
-my $nrmcomputer      = 'nrmdna.nrm.se';          # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
+my $nrmuser          = '';                       # Provide your NRM user name here, e.g. 'joebro'
+my $mailuser         = '';                       # Provide your e-mail address here, e.g. 'joe.brown@email.com'
+my $nrmcomputer      = '';                       # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
 my $nrmpath          = '/dnadata/projects/';     # Confirm path with NRM-IT!
 my $findinboxes      = '/proj/sllstore2017093/'; # Locate inboxes recursively starting in this location.
-
 my $VERBOSE          = 1;                        # Set to 0 for noverbose
 my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
 my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
@@ -175,12 +176,19 @@ foreach my $string (sort keys %HoH) {
     $i++;
 }
 
+## Thu 08 Feb 2018 12:46:37 PM CET: Adjust this subroutine to accomodate these alternative strings
+## /proj/sllstore2017093/b2016073/b2016073/INBOX
+## /proj/sllstore2017093/b2016073/b2016073
+## /proj/sllstore2017093/b2016073
+## b2016073
+## sllstore2017093
 sub populate_hash {
-    ## Reads string (path) and populates hash
+    ## Reads string (path or name) and populates hash
     my ($string) = (@_);
     my ($destination_path, $h, $p, $projid, $folder, @restpath);
-    my $projINBOXpath = '/proj/' . $string . '/INBOX';
+    my $projINBOXpath = '/proj/' . $string . '/INBOX'; # Thu 08 Feb 2018 12:45:47 PM CET: Adjust this
 
+    ## If string starts with /proj and points to an existing folder (i.e. full path)
     if (($string =~ /^\/proj\//) and (-d "$string")) {
         if (($h, $p, $projid, @restpath) = split /\//, $string) {
             $folder = pop(@restpath);
