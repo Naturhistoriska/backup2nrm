@@ -2,17 +2,33 @@
 
 TODO: rewrite for decomission of milou:
 
->Nu börjar det trilla in en hel del nya data från SciLife,
->så vi måste få ordning på hur vi gör back-up… 
->Jag lägger nu alla nya data i respektive INBOX på Rackham
->(dvs tex nya sedimentdatat `P9351` som ligger på
->`/proj/sllstore2017093/b2014312/b2014312/INBOX/P9351`).
->
->Så om det skulle gå att ha ett script som backar upp alla
->INBOX:ar på `sllstore2017093`
->så vore det ju trevligt. 
+> Nu börjar det trilla in en hel del nya data från SciLife,
+> så vi måste få ordning på hur vi gör back-up… 
+> Jag lägger nu alla nya data i respektive INBOX på Rackham
+> (dvs tex nya sedimentdatat `P9351` som ligger på
+> `/proj/sllstore2017093/b2014312/b2014312/INBOX/P9351`).
+> 
+> Så om det skulle gå att ha ett script som backar upp alla
+> INBOX:ar på `sllstore2017093`
+> så vore det ju trevligt. 
 
-    [nylander@rackham2]$ find /proj/sllstore2017093/ -type d -name INBOX 2>/dev/null > inboxes.list
+    [nylander@rackham2]$ find /proj/sllstore2017093/ -maxdepth 4 -type d -name INBOX  2>/dev/null > inboxes.list
+    [nylander@rackham2]$ inboxes.list
+    /proj/sllstore2017093/b2016342/b2016342/INBOX
+    /proj/sllstore2017093/b2016073/b2016073/INBOX
+    /proj/sllstore2017093/b2016004/b2016004/INBOX
+    /proj/sllstore2017093/b2015298/b2015298/INBOX
+    /proj/sllstore2017093/b2015348/b2015348/INBOX
+    /proj/sllstore2017093/b2017026/b2017026/INBOX
+    /proj/sllstore2017093/b2016263/b2016263/INBOX
+    /proj/sllstore2017093/b2014312/b2014312/INBOX
+    /proj/sllstore2017093/b2017068/b2017068/INBOX
+    /proj/sllstore2017093/b2017093/b2017093/INBOX
+    /proj/sllstore2017093/b2015028/b2015028_nobackup/INBOX
+    /proj/sllstore2017093/b2015028/b2015028/INBOX
+
+
+
 
 
 

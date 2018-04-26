@@ -43,6 +43,8 @@ my $exclude          = 0;
 my $submit           = 0;
 my $time             = q{};
 my $infile           = q{};
+#my @inboxes          = ();
+my $inboxes          = q{};
 my $pids             = q{};
 my $nrmcomputer_user = q{};
 my $mbs              = q{};
@@ -67,8 +69,8 @@ if ($findinboxes) {
         die "Error: Can not locate directory $findinboxes.\nNeed to provide correct path to where to start looking for INBOXes.\n";
     }
     else {
-        find_inboxes($findinboxes);
-        exit;
+        #@inboxes = find_inboxes($findinboxes);
+        $inboxes = find_inboxes($findinboxes);
     }
 }
 
@@ -283,31 +285,48 @@ sub dd {
 }
 
 sub find_inboxes {
-    my ($searchpath) = (@_); # '/proj/sllstore2017093/'
-    use vars qw/*name *dir *prune/;
-    *name   = *File::Find::name;
-    *dir    = *File::Find::dir;
-    *prune  = *File::Find::prune;
-    my (@boxes) = File::Find::find({wanted => \&inboxes}, $searchpath);
-    foreach my $box (@boxes) {
-        if ($box =~ /_nobackup/) {
-            next;
-        }
-        else {
-            print STDOUT $box, "\n";
-        }
-    }
+    ## Arg is path to start searching: '/proj/sllstore2017093/'
+    ## Need a trailing slash for find to work!.
+    ## Note redirection of all errs to /dev/null.
+    ## Reads an arbitrary number of lines.
+    my ($searchpath) = (@_);
+    if ($searchpath !~ /\/$/) {
+        $searchpath = $searchpath . '/';
+    }   
+    open FIND, "find $searchpath -maxdepth 4 -type d -name INBOX 2>/dev/null |";
+    read FIND, my $find_output, 99999;
+    my @boxes = split(/\n/, $find_output);
+    return \@boxes;
 }
 
-sub inboxes {
-    my @list = ();
-    my ($dev, $ino, $mode, $nlink, $uid, $gid);
-    (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_)) &&
-    -d _ &&
-    /^INBOX\z/s
-    && push(@list, $name);
-    return \@list;
-}
+
+# sub find_inboxes {
+#     ## Function generated using "find2perl /proj/sllstore2017093/ -type d -name INBOX"
+#     my ($searchpath) = (@_); # '/proj/sllstore2017093/'
+#     use vars qw/*name *dir *prune/;
+#     *name  = *File::Find::name;
+#     *dir   = *File::Find::dir;
+#     *prune = *File::Find::prune;
+#     my (@boxes) = File::Find::find({wanted => \&inboxes}, $searchpath);
+#     foreach my $box (@boxes) {
+#         if ($box =~ /_nobackup/) {
+#             next;
+#         }
+#         else {
+#             print STDOUT $box, "\n";
+#         }
+#     }
+# }
+# 
+# sub inboxes {
+#     my @list = ();
+#     my ($dev, $ino, $mode, $nlink, $uid, $gid);
+#     (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_)) &&
+#     -d _ &&
+#     /^INBOX\z/s
+#     && push(@list, $name); # Doesn't work here because names should be defined as in find_inboxes?
+#     return \@list;
+# }
 
 
 =pod
