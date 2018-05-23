@@ -10,8 +10,8 @@
 
     TODO: * Adjust for the fact that project IDS are listed twice on Loves' rackham project:
             /proj/sllstore2017093/b2016073/b2016073/INBOX
-          * Test to see if the list of INBOXes are correctly returned
-          * See if we need a trailing / in the path for $findinboxes.
+          * Supply a path, check for INBOXes in that path, create a rsync command for that path
+          * Alternative use?: check for INBOXes in supplied path, create a file with that list, supply that file as input
   
 =cut
 
@@ -96,6 +96,13 @@ else {
     $rsynccmd = $rsynccmd . $rsynccmd_ssh;
 }
 
+## Thu 08 Feb 2018 12:46:37 PM CET: Adjust to accomodate these alternative strings
+## string might be any of these:
+## /proj/sllstore2017093/b2016073/b2016073/INBOX   -> /dnadata/projects/lovedale/b2016073/INBOX
+## /proj/sllstore2017093/b2016073/b2016073         -> /dnadata/projects/lovedale/b2016073/INBOX
+## /proj/sllstore2017093/b2016073                  -> /dnadata/projects/lovedale/b2016073/INBOX
+## b2016073                                        -> /dnadata/projects/lovedale/b2016073/INBOX
+## sllstore2017093                                 -> 12 different projects!
 if ($infile) {
     open my $INFILE, "<", $infile or die "Could not open infile $!\n";
     while(<$INFILE>) {
@@ -178,14 +185,20 @@ foreach my $string (sort keys %HoH) {
     $i++;
 }
 
-## Thu 08 Feb 2018 12:46:37 PM CET: Adjust this subroutine to accomodate these alternative strings
-## /proj/sllstore2017093/b2016073/b2016073/INBOX
-## /proj/sllstore2017093/b2016073/b2016073
-## /proj/sllstore2017093/b2016073
-## b2016073
-## sllstore2017093
+
 sub populate_hash {
     ## Reads string (path or name) and populates hash
+    ## Thu 08 Feb 2018 12:46:37 PM CET: Adjust to accomodate these alternative strings
+    ## string might be any of these:
+    ## /proj/sllstore2017093/b2016073/b2016073/INBOX   -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## /proj/sllstore2017093/b2016073/b2016073         -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## /proj/sllstore2017093/b2016073                  -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## b2016073                                        -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## sllstore2017093                                 -> points at 12 different projects!
+    #
+    # perhaps first find_inboxes, then split that list (which will start in /proj/, and end in INBOX)?
+    # 
+
     my ($string) = (@_);
     my ($destination_path, $h, $p, $projid, $folder, @restpath);
     my $projINBOXpath = '/proj/' . $string . '/INBOX'; # Thu 08 Feb 2018 12:45:47 PM CET: Adjust this
@@ -295,6 +308,7 @@ sub find_inboxes {
     }   
     open FIND, "find $searchpath -maxdepth 4 -type d -name INBOX 2>/dev/null |";
     read FIND, my $find_output, 99999;
+    close FIND;
     my @boxes = split(/\n/, $find_output);
     return \@boxes;
 }

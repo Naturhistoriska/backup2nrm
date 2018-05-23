@@ -27,7 +27,36 @@ TODO: rewrite for decomission of milou:
     /proj/sllstore2017093/b2015028/b2015028_nobackup/INBOX
     /proj/sllstore2017093/b2015028/b2015028/INBOX
 
+    [nylander@rackham2 ~]$ diff /proj/sllstore2017093/b2015028/b2015028_nobackup/INBOX /proj/sllstore2017093/b2015028/b2015028/INBOX
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: delivery0141
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: L.Dalen_16_38
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: L.Dalen_16_39
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: L.Dalen_16_43
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: L.Dalen_17_22
+    Only in /proj/sllstore2017093/b2015028/b2015028_nobackup/INBOX: P3112
+    Only in /proj/sllstore2017093/b2015028/b2015028_nobackup/INBOX: P5954
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: P7907
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: P7908
+    Only in /proj/sllstore2017093/b2015028/b2015028/INBOX: P8009
 
+    # 05/23/2018
+    # On rackham.uppmax.uu.se                                 On nrmdna.nrm.se
+    NA                                                     -> /dnadata/projects/lovedale/b2013280
+    NA                                                     -> /dnadata/projects/lovedale/b2014211
+    /proj/sllstore2017093/b2014312/b2014312/INBOX          -> /dnadata/projects/lovedale/b2014312
+    /proj/sllstore2017093/b2015028/b2015028/INBOX          -> /dnadata/projects/lovedale/b2015028
+    /proj/sllstore2017093/b2015028/b2015028_nobackup/INBOX -> ???
+    /proj/sllstore2017093/b2015298/b2015298/INBOX          -> /dnadata/projects/lovedale/b2015298
+    /proj/sllstore2017093/b2015348/b2015348/INBOX          -> /dnadata/projects/lovedale/b2015348
+    NA                                                     -> /dnadata/projects/lovedale/b2015383
+    /proj/sllstore2017093/b2016004/b2016004/INBOX          -> /dnadata/projects/lovedale/b2016004
+    /proj/sllstore2017093/b2016073/b2016073/INBOX          -> /dnadata/projects/lovedale/b2016073
+    NA                                                     -> /dnadata/projects/lovedale/b2016109
+    /proj/sllstore2017093/b2016263/b2016263/INBOX          -> /dnadata/projects/lovedale/b2016263
+    /proj/sllstore2017093/b2016342/b2016342/INBOX          -> /dnadata/projects/lovedale/b2016342
+    /proj/sllstore2017093/b2017026/b2017026/INBOX          -> /dnadata/projects/lovedale/b2017026
+    /proj/sllstore2017093/b2017068/b2017068/INBOX          -> /dnadata/projects/lovedale/b2017068
+    /proj/sllstore2017093/b2017093/b2017093/INBOX          -> /dnadata/projects/lovedale/b2017093
 
 
 
