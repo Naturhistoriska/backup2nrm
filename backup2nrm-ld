@@ -1,0 +1,531 @@
+#!/usr/bin/env perl 
+
+#=====================================================================
+# Transfer files from UPPMAX's project MASTER_INBOX to deignated
+# MASTER_INBOX folder on NRM.
+# Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this
+# file for description.
+#=====================================================================
+
+=pod
+
+    TODO: * Adjust for the fact that project IDS are listed twice on Loves' rackham project:
+            /proj/sllstore2017093/b2016073/b2016073/INBOX
+          * Supply a path, check for INBOXes in that path, create a rsync command for that path
+          * Alternative use?: check for INBOXes in supplied path, create a file with that list, supply that file as input
+
+          * Test syncing "/proj/sllstore2017093/MASTER_INBOX" with "/dnadata/projects/johanyla/MASTER_INBOX"
+          * Remember: "Without a slash on the source directory means copy both the source directory, 
+                       and the contents (recursively if specified) to the destination directory while
+                       adding a trailing slash means only copy the contents of the source directory,
+                       recursively if specified, to the destination."
+                       
+                       rsync -av --exclude=".DS_Store" --exclude="._.DS_Store" -P \
+                           /proj/sllstore2017093/MASTER_INBOX \
+                           "johanyla@nrm.se"@:/dnadata/projects/johanyla/sllstore2017093
+
+                       The above will copy the folder MASTER_INBOX with it's content, and put
+                       it inside sllstore2017093.
+
+                       rsync -av --exclude=".DS_Store" --exclude="._.DS_Store" -P \
+                           /proj/sllstore2017093/MASTER_INBOX/ \
+                           "johanyla@nrm.se"@:/dnadata/projects/johanyla/sllstore2017093/MASTER_INBOX
+
+                       The above will copy the content of folder MASTER_INBOX, and put it
+                       it inside sllstore2017093/MASTER_INBOX.
+
+
+
+  
+=cut
+
+
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long;
+use File::Find;
+no warnings "File::Find";
+
+my $nrmuser          = 'johanyla';                       # Provide your NRM user name here, e.g. 'joebro'
+my $mailuser         = '';                       # Provide your e-mail address here, e.g. 'joe.brown@email.com'
+my $nrmcomputer      = '';                       # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
+my $nrmpath          = '/dnadata/projects';      # Confirm path with NRM-IT!
+my $findinboxes      = '/proj/sllstore2017093';  # Locate inboxes nonrecursively starting in this location.
+my $VERBOSE          = 1;                        # Set to 0 for noverbose
+my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
+my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
+my $rsynccmd         = 'rsync -av --exclude=".DS_Store" --exclude="._.DS_Store" -P ';          # Testing standard settings.  See END comments.
+my $rsynccmd_ssh     = ' ';                      # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
+my $rsynccmd_exc     = " --exclude \'best_practice_qc/\' ";
+my $sbatchcmd        = 'sbatch';
+my $uppmax           = $ENV{HOSTNAME};           # 'rackham.uppmax.uu.se', 'snowy.uppmax.uu.se';
+my $whoami           = $ENV{USER};
+my $uppmax_user      = $whoami;
+my $autotime         = 0;                        # Autotime is multiplied by an integer (see GetOptions arg below) 
+my $exclude          = 0;
+my $submit           = 0;
+my $time             = q{};
+my $infile           = q{};
+#my @inboxes          = ();
+my $inboxes          = q{};
+my $pids             = q{};
+my $nrmcomputer_user = q{};
+my $mbs              = q{};
+my $date             = prettydate();
+my %HoH              = ();
+
+GetOptions(
+    "autotime:3"      => \$autotime,
+    "infile|file=s"   => \$infile,
+    "mail-user=s"     => \$mailuser,
+    "nrm-user:s"      => \$nrmuser,
+    "submit!"         => \$submit,
+    "time=s"          => \$time,
+    "verbose!"        => \$VERBOSE,
+    "findinboxes=s"   => \$findinboxes,
+    "xclude|exclude!" => \$exclude,
+    "help"            => sub { exec("perldoc", $0); exit(0); },
+);
+
+if ($findinboxes) {
+    if (! -d $findinboxes) {
+        die "Error: Can not locate directory $findinboxes.\nNeed to provide correct path to where to start looking for MASTER_INBOX.\n";
+    }
+    else {
+        #@inboxes = find_inboxes($findinboxes);
+        $inboxes = find_inboxes($findinboxes);
+    }
+}
+
+if ($nrmpath =~ /\/$/) {
+    $nrmpath =~ s/\/$//;
+}
+
+if ($nrmuser) {
+    $nrmcomputer_user = $nrmuser . '@nrm.se';
+}
+else {
+    $nrmuser = $uppmax_user; # Try uppmax user. Might fail!
+    $nrmcomputer_user = $uppmax_user . '@nrm.se';
+}
+
+if ($time) {
+    $time = $time;
+}
+else {
+    $time = $timedefault;
+}
+
+if ($exclude) {
+    $rsynccmd = $rsynccmd . $rsynccmd_exc . $rsynccmd_ssh;
+}
+else {
+    $rsynccmd = $rsynccmd . $rsynccmd_ssh;
+}
+
+if ($infile) {
+    open my $INFILE, "<", $infile or die "Could not open infile $!\n";
+    while(<$INFILE>) {
+        my $string = $_;
+        chomp($string);
+        next if ($string =~ /^\s*$/);
+        $string =~ s/\/$//;
+        populate_hash($string);
+    }
+    close($INFILE);
+}
+else {
+    while (my $string = shift) {
+        chomp($string);
+        $string =~ s/\/$//;
+        populate_hash($string);
+    }
+}
+
+my $i = 0;
+foreach my $string (sort keys %HoH) {
+    my $projectid = $HoH{$string}->{'projectid'};
+    my $source = $HoH{$string}->{'source'};
+    my $destination = $HoH{$string}->{'destination'};
+    my $folder = $HoH{$string}->{'folder'};
+    my $jobname = 'rsync-' . $date . '.' . $i . '-' . $folder . '-' . $projectid;
+    my $outfile = $jobname . '.slurm';
+    open (my $PRINT, '>', $outfile) or die "$0 : Failed to open output file $outfile : $!\n\n";
+    print $PRINT '#!/bin/bash -l', "\n";
+    print $PRINT "\n";
+    print $PRINT "## backup2nrm script created $date\n";
+    print $PRINT "## Transfer files from $uppmax to $nrmcomputer:\n";
+    print $PRINT "##\n";
+    print $PRINT "##    $source -> $destination\n";
+    print $PRINT "##\n";
+    print $PRINT "## Run script on UPPMAX by: sbatch --test-only $outfile\n";
+    print $PRINT "##                and then: sbatch $outfile\n";
+    print $PRINT "## Monitor slurm status by:\n";
+    print $PRINT "##    jobinfo -u $uppmax_user\n";
+    print $PRINT "## Cancel slurm job by:\n";
+    print $PRINT "##    scancel <JOBID>\n";
+    print $PRINT "##    scancel -i -u $uppmax_user\n";
+    print $PRINT "##    scancel --state=pending -u $uppmax_user\n";
+    print $PRINT "\n";
+    print $PRINT "#SBATCH -J $jobname\n";
+    print $PRINT "#SBATCH -A $projectid\n";
+    if ($autotime) {
+        $time = setautotime($source, $destination, $exclude, $autotime); 
+    }
+    print $PRINT "#SBATCH -t $time\n";
+    print $PRINT "#SBATCH -p core\n";
+    print $PRINT "#SBATCH -n 1\n";
+    if ($mailuser) {
+        print $PRINT "#SBATCH --mail-type=BEGIN,END,FAIL --mail-user=$mailuser\n";
+    }
+    print $PRINT "\n";
+    print $PRINT "## $string\n";
+    print $PRINT $rsynccmd, ' ', $source, ' ', '"', $nrmcomputer_user, '"', '@', $nrmcomputer, ':', $destination, "\n";
+    print $PRINT "\n";
+    close($PRINT);
+
+    if ($outfile) {
+        if(-e $outfile) {
+            chmod 0755, $outfile;
+            print STDERR "\nCreated file $outfile\n" if $VERBOSE;
+            if ($submit) {
+                system($sbatchcmd, $outfile); # Not checking system submit status
+                print STDERR "Submitted script $outfile to SLURM.\n" if $VERBOSE;
+                print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
+                print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
+            }
+            else {
+                print "Run the script on uppmax by:\n\n  sbatch $outfile\n\n";
+            }
+        }
+        else {
+            die "Could not create script file $outfile : $! \n";
+        }
+    }
+    $i++;
+}
+
+
+sub populate_hash {
+    ## Reads string (path or name) and populates hash
+    ## Thu 08 Feb 2018 12:46:37 PM CET: Adjust to accomodate these alternative strings
+    ## string might be any of these:
+    ## /proj/sllstore2017093/b2016073/b2016073/INBOX   -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## /proj/sllstore2017093/b2016073/b2016073         -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## /proj/sllstore2017093/b2016073                  -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## b2016073                                        -> points at /dnadata/projects/lovedale/b2016073/INBOX
+    ## sllstore2017093                                 -> points at 12 different projects!
+    #
+    # Fri 07 Dec 2018 10:38:17 AM CET:
+    # String is now meant to be either:
+    # "sllstore2017093"
+    # "/proj/sllstore2017093"
+    # "/proj/sllstore2017093/MASTER_INBOX"
+    #
+
+    my ($string) = (@_);
+    my ($destination_path, $h, $p, $projid, $folder, @restpath);
+    my $projINBOXpath = '/proj/' . $string . '/MASTER_INBOX';
+
+    ## If string starts with /proj and points to an existing folder (i.e. full path)
+    #Fri 07 Dec 2018 10:44:33 AM CET: Check the resulting path
+    if (($string =~ /^\/proj\//) and (-d "$string")) {
+        if (($h, $p, $projid, @restpath) = split /\//, $string) {
+            $folder = pop(@restpath);
+            chomp($folder);
+            $destination_path = join('/', $projid, @restpath);
+            $destination_path = $nrmpath . '/' . $nrmuser . '/' . $destination_path;
+            $HoH{$string}{'folder'} = $folder;
+            $HoH{$string}{'source'} = $string;
+            $HoH{$string}{'destination'} = $destination_path;
+            $HoH{$string}{'projectid'} = $projid;
+        }
+        else {
+            die "Error: Could not read path from string \"$string\"\n";
+        }
+    }
+    elsif (-d "$projINBOXpath") {
+        $destination_path = $nrmpath . '/' . $nrmuser . '/' . $string;
+        $HoH{$string}{'folder'} = 'MASTER_INBOX'; # INBOX
+        $HoH{$string}{'source'} = $projINBOXpath;
+        $HoH{$string}{'destination'} = $destination_path;
+        $HoH{$string}{'projectid'} = $string;
+    }
+    else {
+        die "Error: does folder (or project) \"$string\" exist?\n";
+    }
+
+    print Dumper(%HoH);warn "\n HERE (hit return to continue)\n" and getc();
+
+}
+
+sub prettydate {
+    ## Returns date string, e.g. "01122015"
+    @_ = localtime(shift || time);
+    return(sprintf("%02d%02d%04d", $_[3], $_[4]+1, $_[5]+1900));
+}
+
+sub setautotime {
+    ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    ## Time calculated from size to be transferred and
+    ## average transfer speed times an extra constant ($extra)
+    ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    my ($src, $dest, $exl, $extra) = (@_);
+    my $size = 0;
+    my $speed = 0;
+    my $cmd = 'rsync -an --stats';
+    if ($exl) {
+        $cmd = $cmd . ' ' . "--exclude \'best_practice_qc/\'" . "--exclude=\'.DS_Store\' --exclude=\'._.DS_Store\'"  . ' ' . $src . ' ' . "\"$nrmcomputer_user\"" . '@' . "$nrmcomputer:$dest";
+    }
+    else {
+        $cmd = $cmd . ' ' . $src . "--exclude=\'.DS_Store\' --exclude=\'._.DS_Store\'" . ' ' . "\"$nrmcomputer_user\"" . '@' . "$nrmcomputer:$dest";
+    }
+    my @output = `$cmd`;
+    chomp @output;
+    foreach (@output) {
+        if (/Total\s+transferred\s+file\s+size:\s+(\d+)\s+bytes/) {
+            $size = $1;
+        }
+        elsif (/total\s+size\s+is\s+(\d+)\s+/) {
+            $size = $1;
+        }
+    }
+    my $mbs = dd();
+    $speed = $mbs * (1024 * 1024); # MB/s to bytes/s
+    my $transfertime = ($size / $speed) * $extra;
+    my $s = sprintf "%d", $transfertime;
+    return sprintf "0-00:00:%02d", $s if ($s < 60);
+    my $m = $s / 60;
+    $s %= 60;
+    return sprintf "0-00:%02d:%02d", $m, $s if ($m < 60);
+    my $h = $m / 60;
+    $m %= 60;
+    return sprintf "0-%02d:%02d:%02d", $h, $m, $s if ($h < 24);
+    my $d = $h / 24;
+    $h %= 24;
+    return sprintf "%d-%02d:%02d:%02d", $d, $h, $m, $s;
+}
+
+sub dd {
+    ## Returns MB/s string, e.g. "92.4".
+    ## Test connection speed by sending 1M data to destination.
+    ## Uses 'dd' and 'ssh'. Reads from '/dev/zero' on source,
+    ## and writes to '/dev/null' on destination
+    my $mbs = 0;
+    print STDERR "Testing connection speed. Might take a moment.\n";
+    system("dd if=/dev/zero count=1k bs=1M 2>tmp.stderr.tmp | ssh $nrmcomputer_user\@$nrmcomputer \'cat>/dev/null\'");
+    open my $fh, "<", "tmp.stderr.tmp" or die "could not open tmp.stderr: $!\n";
+    while(<$fh>) {
+        if (m/([\d|\.]+) MB\/s/) {
+            $mbs = $1; 
+        }
+    }   
+    close($fh);
+    unlink("tmp.stderr.tmp");
+    return $mbs;
+}
+
+sub find_inboxes {
+    ## Arg is path to start searching: '/proj/sllstore2017093/'
+    ## Need a trailing slash for find to work!.
+    ## Note redirection of all errs to /dev/null.
+    ## Reads an arbitrary number of lines.
+    my ($searchpath) = (@_);
+    if ($searchpath !~ /\/$/) {
+        $searchpath = $searchpath . '/';
+    }   
+    open FIND, "find $searchpath -maxdepth 4 -type d -name MASTER_INBOX 2>/dev/null |";
+    #open FIND, "find $searchpath -maxdepth 4 -type d -name INBOX 2>/dev/null |";
+    read FIND, my $find_output, 99999;
+    close FIND;
+    my @boxes = split(/\n/, $find_output);
+    return \@boxes;
+}
+
+
+# sub find_inboxes {
+#     ## Function generated using "find2perl /proj/sllstore2017093/ -type d -name INBOX"
+#     my ($searchpath) = (@_); # '/proj/sllstore2017093/'
+#     use vars qw/*name *dir *prune/;
+#     *name  = *File::Find::name;
+#     *dir   = *File::Find::dir;
+#     *prune = *File::Find::prune;
+#     my (@boxes) = File::Find::find({wanted => \&inboxes}, $searchpath);
+#     foreach my $box (@boxes) {
+#         if ($box =~ /_nobackup/) {
+#             next;
+#         }
+#         else {
+#             print STDOUT $box, "\n";
+#         }
+#     }
+# }
+# 
+# sub inboxes {
+#     my @list = ();
+#     my ($dev, $ino, $mode, $nlink, $uid, $gid);
+#     (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_)) &&
+#     -d _ &&
+#     /^INBOX\z/s
+#     && push(@list, $name); # Doesn't work here because names should be defined as in find_inboxes?
+#     return \@list;
+# }
+
+
+=pod
+
+=head1 NAME
+
+backup2nrm - Backup Files to NRM
+
+=head1 VERSION
+
+Version Tue 06 Feb 2018 05:16:56 PM CET
+
+=head1 SYNOPSIS
+
+ backup2nrm [options] /path/to/folder[|project_id]
+
+=head1 EXAMPLES
+
+B<Transfer files in C</proj/b1234567/INBOX>>
+
+  backup2nrm b2014312 
+
+B<Transfer files in specific folder (full path!)>
+
+  backup2nrm /proj/b1234567/INBOX/P1234 
+
+B<Use a list of projects or folders from file>
+
+  backup2nrm -f <file_with_paths_or_projids>
+
+B<Specify username on NRM, and e-mail address for messages (from UPPMAX)>
+
+  backup2nrm -s -n nrmuser -m a.name@email.com b1234567
+
+B<Submit generated slurm script, use auto-generation of estimated transfer time,>
+B<and exclude best_pracice_qc folder>
+
+  backup2nrm -s -a -x b1234567
+
+=head1 DESCRIPTION
+
+The C<backup2nrm>-script generates a script (in the current working directory) with instructions 
+on how to transfer files from UPPMAX to NRM.
+
+Review the generated transfer-script and if found appropriate, submit the script to the SLURM system.
+
+The C<backup2nrm>-script has a number of options that could be of use (see B<OPTIONS> below). 
+
+Either the full path to the source folder should be provided as argument, or the (UPPMAX) project id only.
+If the project id is used, then the C<INBOX> folder is used as source and destination.
+
+Example source and destination directories:
+
+ /proj/b1234567/INBOX/A.Name_12_34 -> /dnadata/projects/nrmuser/b1234567/INBOX/A.Name_12_34
+
+Generates file C<< rsync-E<lt>projidE<gt>-E<lt>dateE<gt>.E<lt>iE<gt>.slurm >> in the current working directory.
+
+The user of the script needs to have accounts on both UPPMAX and NRM, and the script should be run on UPPMAX.
+
+No extensive error checking. Run output script manually and look at output.
+
+Example folders
+
+ /proj/b1234567/INBOX/A.Name_12_34
+ /proj/b1234567/INBOX/A.Name_12_35
+ /proj/b1234567/INBOX/A.Name_12_36
+
+Example projects
+
+ b1234567
+ b2345678
+
+=head2 Transfer speed
+
+Transfer speed between UPPMAX and NRM varies erratically (0.1 - >100 MB/s).
+To estimate the time needed for the slurm script, I assume a transfer speed of 20MB/s, and add 20%.
+This value will probably need to be adjusted.
+Note: 1 Mbps = 0.125 MB/s.
+
+=head2 NRM authentication
+
+Authentication to NRM server is done using SSH-keys: Your C<rda_sa.pub> needs to be know to NRM-IT.
+Internally, NRM user name is send in the form C<"nrmuser@nrm.se"> (and not as C<NRM\\nrmuser> or C<nrmuser>).
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-i, --infile INFILE>
+
+File with a list of directories (full path!) or project names on uppmax to be backed up.
+If project ID:s are used, the the C<INBOX> will be used as source and destination.
+
+=item B<-f, --findinboxes=E<lt>/path/to/folderE<gt>>
+
+Locate INBOXes starting at the given folder (e.g. '/proj/sllstore2017093/').
+The list is printed to STDOUT and can be redirected to E<lt>fileE<gt>.
+This file can then be used as input to the script.
+
+=item B<-s, --submit>
+
+Submit to cluster (calling C<sbatch>). Default: B<-nosubmit>.
+
+=item B<-m, --mail-user=E<lt>emailE<gt>>
+
+Send messages from the cluster to <email>.
+
+=item B<-n, --nrm-user=E<lt>userE<gt>>
+
+User on NRM.
+
+=item B<-t, --time=E<lt>timeE<gt>>
+
+Set run time for script. Use format C<D-H:MM:SS>, e.g. C<0-3:00:00>
+
+=item B<-a, --autotime=E<lt><intE<gt>>
+
+Try to estimate optimal runtime. The estimated time is multiplied by an integer (default:3)
+to add some extra time margin. This integer can be changed using, e.g. B<-noautotime=4>.
+Default is to not use the autotime.
+
+=item B<-e,-x --exclude>
+
+Exclude folder B<best_practice_qc> (and save ~ 50% space)
+
+=item B<-h, --help>
+
+Help text.
+
+=back
+
+=head1 TODO
+
+=over
+
+=item * How does script behave if no ssh keys? dd will fail there: capture error then, or before?
+
+=item * If time less than 15(?) mins, use devcore partition?
+
+=item * Test different rsync+ssh options for speed.
+
+=item * Change $nrmuser to (empty) values for master script and test!
+
+=back
+
+=head1 AUTHOR
+
+Johan Nylander L<<johan.nylanderATnrm.se>>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2017,2018 by Johan Nylander.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
+
