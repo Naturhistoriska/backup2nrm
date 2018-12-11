@@ -19,23 +19,6 @@
                        and the contents (recursively if specified) to the destination directory while
                        adding a trailing slash means only copy the contents of the source directory,
                        recursively if specified, to the destination."
-                       
-                       rsync -av --exclude=".DS_Store" --exclude="._.DS_Store" -P \
-                           /proj/sllstore2017093/MASTER_INBOX \
-                           "johanyla@nrm.se"@:/dnadata/projects/johanyla/sllstore2017093
-
-                       The above will copy the folder MASTER_INBOX with it's content, and put
-                       it inside sllstore2017093.
-
-                       rsync -av --exclude=".DS_Store" --exclude="._.DS_Store" -P \
-                           /proj/sllstore2017093/MASTER_INBOX/ \
-                           "johanyla@nrm.se"@:/dnadata/projects/johanyla/sllstore2017093/MASTER_INBOX
-
-                       The above will copy the content of folder MASTER_INBOX, and put it
-                       it inside sllstore2017093/MASTER_INBOX.
-
-
-
   
 =cut
 
@@ -47,11 +30,11 @@ use Getopt::Long;
 use File::Find;
 no warnings "File::Find";
 
-my $nrmuser          = 'johanyla';                       # Provide your NRM user name here, e.g. 'joebro'
+my $nrmuser          = '';                       # Provide your NRM user name here, e.g. 'joebro'
 my $mailuser         = '';                       # Provide your e-mail address here, e.g. 'joe.brown@email.com'
 my $nrmcomputer      = '';                       # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
 my $nrmpath          = '/dnadata/projects';      # Confirm path with NRM-IT!
-my $findinboxes      = '/proj/sllstore2017093';  # Locate inboxes nonrecursively starting in this location.
+my $findinboxes      = '/proj/sllstore2017093';  # Locate inboxes nonrecursively starting in this location (on uppmax).
 my $VERBOSE          = 1;                        # Set to 0 for noverbose
 my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
 my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
