@@ -26,8 +26,9 @@ no warnings "File::Find";
 my $nrmuser          = '';                       # Provide your NRM user name here, e.g. 'joebro'
 my $mailuser         = '';                       # Provide your e-mail address here, e.g. 'joe.brown@email.com'
 my $nrmcomputer      = '';                       # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
-my $nrmpath          = '/dnadata/projects/';     # Confirm path with NRM-IT!
-my $findinboxes      = '/proj/sllstore2017093/'; # Locate inboxes recursively starting in this location.
+my $nrmpath          = '';                       # Confirm path with NRM-IT!
+my $cpuaccount       = '';                       # Account ID for CPU hours on UPPMAX ('snicxxxx-x-xxx')
+my $findinboxes      = '';                       # Locate inboxes recursively starting in this location.
 my $VERBOSE          = 1;                        # Set to 0 for noverbose
 my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
 my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
@@ -43,7 +44,6 @@ my $exclude          = 0;
 my $submit           = 0;
 my $time             = q{};
 my $infile           = q{};
-#my @inboxes          = ();
 my $inboxes          = q{};
 my $pids             = q{};
 my $nrmcomputer_user = q{};
@@ -53,6 +53,7 @@ my %HoH              = ();
 
 GetOptions(
     "autotime:3"      => \$autotime,
+    "cpuaccount=s"    => \$cpuaccount,
     "infile|file=s"   => \$infile,
     "mail-user=s"     => \$mailuser,
     "nrm-user:s"      => \$nrmuser,
@@ -148,6 +149,7 @@ foreach my $string (sort keys %HoH) {
     print $PRINT "##    scancel --state=pending -u $uppmax_user\n";
     print $PRINT "\n";
     print $PRINT "#SBATCH -J $jobname\n";
+    print $PRINT "#SBATCH -A $cpuaccount\n";
     print $PRINT "#SBATCH -A $projectid\n";
     if ($autotime) {
         $time = setautotime($source, $destination, $exclude, $autotime); 
@@ -255,11 +257,13 @@ sub setautotime {
     my @output = `$cmd`;
     chomp @output;
     foreach (@output) {
-        if (/Total\s+transferred\s+file\s+size:\s+(\d+)\s+bytes/) {
+        if (/Total\s+transferred\s+file\s+size:\s+([\d|,]+)\s+bytes/) {
             $size = $1;
+            $size =~ s/,//g;
         }
-        elsif (/total\s+size\s+is\s+(\d+)\s+/) {
+        elsif (/total\s+size\s+is\s+([\d|,]+)\s+/) {
             $size = $1;
+            $size =~ s/,//g;
         }
     }
     my $mbs = dd();
