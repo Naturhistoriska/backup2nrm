@@ -1,7 +1,7 @@
 #!/usr/bin/env perl 
 
 #=====================================================================
-# Transfer files from UPPMAX's project MASTER_INBOX to deignated
+# Transfer files from UPPMAX's project MASTER_INBOX to designated
 # MASTER_INBOX folder on NRM.
 # Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this
 # file for description.
@@ -9,11 +9,7 @@
 
 =pod
 
-    TODO: * Adjust for the fact that project IDS are listed twice on Loves' rackham project:
-            /proj/sllstore2017093/b2016073/b2016073/INBOX
-          * Supply a path, check for INBOXes in that path, create a rsync command for that path
-          * Alternative use?: check for INBOXes in supplied path, create a file with that list, supply that file as input
-
+    TODO: 
           * Test syncing "/proj/sllstore2017093/MASTER_INBOX" with "/dnadata/projects/johanyla/MASTER_INBOX"
           * Remember: "Without a slash on the source directory means copy both the source directory, 
                        and the contents (recursively if specified) to the destination directory while
@@ -33,16 +29,16 @@ no warnings "File::Find";
 my $nrmuser          = '';                       # Provide your NRM user name here, e.g. 'joebro'
 my $mailuser         = '';                       # Provide your e-mail address here, e.g. 'joe.brown@email.com'
 my $nrmcomputer      = '';                       # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
-my $nrmpath          = '/dnadata/projects';      # Confirm path with NRM-IT!
-my $findinboxes      = '/proj/sllstore2017093';  # Locate inboxes nonrecursively starting in this location (on uppmax).
+my $nrmpath          = '';                       # Confirm path with NRM-IT!
+my $findinboxes      = '';                       # Locate inboxes nonrecursively starting in this location (on uppmax).
 my $VERBOSE          = 1;                        # Set to 0 for noverbose
 my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
 my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
-my $rsynccmd         = 'rsync -av --exclude=".DS_Store" --exclude="._.DS_Store" -P ';          # Testing standard settings.  See END comments.
+my $rsynccmd         = 'rsync -av -h --exclude=".DS_Store" --exclude="._.DS_Store" -P '; # Testing standard settings.  See END comments.
 my $rsynccmd_ssh     = ' ';                      # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
 my $rsynccmd_exc     = " --exclude \'best_practice_qc/\' ";
 my $sbatchcmd        = 'sbatch';
-my $uppmax           = $ENV{HOSTNAME};           # 'rackham.uppmax.uu.se', 'snowy.uppmax.uu.se';
+my $uppmax           = $ENV{HOSTNAME};           # 'rackham.uppmax.uu.se',
 my $whoami           = $ENV{USER};
 my $uppmax_user      = $whoami;
 my $autotime         = 0;                        # Autotime is multiplied by an integer (see GetOptions arg below) 
@@ -319,42 +315,11 @@ sub find_inboxes {
         $searchpath = $searchpath . '/';
     }   
     open FIND, "find $searchpath -maxdepth 4 -type d -name MASTER_INBOX 2>/dev/null |";
-    #open FIND, "find $searchpath -maxdepth 4 -type d -name INBOX 2>/dev/null |";
     read FIND, my $find_output, 99999;
     close FIND;
     my @boxes = split(/\n/, $find_output);
     return \@boxes;
 }
-
-
-# sub find_inboxes {
-#     ## Function generated using "find2perl /proj/sllstore2017093/ -type d -name INBOX"
-#     my ($searchpath) = (@_); # '/proj/sllstore2017093/'
-#     use vars qw/*name *dir *prune/;
-#     *name  = *File::Find::name;
-#     *dir   = *File::Find::dir;
-#     *prune = *File::Find::prune;
-#     my (@boxes) = File::Find::find({wanted => \&inboxes}, $searchpath);
-#     foreach my $box (@boxes) {
-#         if ($box =~ /_nobackup/) {
-#             next;
-#         }
-#         else {
-#             print STDOUT $box, "\n";
-#         }
-#     }
-# }
-# 
-# sub inboxes {
-#     my @list = ();
-#     my ($dev, $ino, $mode, $nlink, $uid, $gid);
-#     (($dev, $ino, $mode, $nlink, $uid, $gid) = lstat($_)) &&
-#     -d _ &&
-#     /^INBOX\z/s
-#     && push(@list, $name); # Doesn't work here because names should be defined as in find_inboxes?
-#     return \@list;
-# }
-
 
 =pod
 
@@ -477,7 +442,7 @@ Default is to not use the autotime.
 
 =item B<-e,-x --exclude>
 
-Exclude folder B<best_practice_qc> (and save ~ 50% space)
+Exclude folder B<best_practice_qc> (and sometimes save ~ 50% space)
 
 =item B<-h, --help>
 
