@@ -9,7 +9,6 @@
 
 use strict;
 use warnings;
-#use Data::Dumper;
 use Getopt::Long;
 
 my $nrmuser          = '';                       # Provide your NRM user name here ('joebro')
@@ -100,7 +99,7 @@ foreach my $string (sort keys %HoH) {
     my $jobname = 'rsync-' . $date . '.' . $i . '-' . $folder . '-' . $projectid;
     my $outfile = $jobname . '.slurm';
 
-    print STDERR "Transfer files from $uppmax to $nrmcomputer:\n" if $VERBOSE;
+    print STDERR "\nTransfer files from $uppmax to $nrmcomputer:\n" if $VERBOSE;
     print STDERR "\n" if $VERBOSE;
     print STDERR "    $source -> $destination\n" if $VERBOSE;
     print STDERR "\n" if $VERBOSE;
@@ -142,10 +141,10 @@ foreach my $string (sort keys %HoH) {
     if ($outfile) {
         if(-e $outfile) {
             chmod 0755, $outfile;
-            print STDERR "\nCreated file $outfile\n" if $VERBOSE;
+            print STDERR "\nCreated file $outfile\n\n" if $VERBOSE;
             if ($submit) {
                 system($sbatchcmd, $outfile); # Not checking system submit status
-                print STDERR "Submitted script $outfile to SLURM.\n" if $VERBOSE;
+                print STDERR "\nSubmitted script $outfile to SLURM.\n" if $VERBOSE;
                 print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
                 print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
             }
