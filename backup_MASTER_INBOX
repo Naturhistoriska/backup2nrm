@@ -1,0 +1,365 @@
+#!/usr/bin/env perl 
+
+#=====================================================================
+# Transfer files from UPPMAX's project MASTER_INBOX to designated
+# MASTER_INBOX folder on NRM.
+# Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this
+# file for description.
+#=====================================================================
+
+use strict;
+use warnings;
+use Getopt::Long;
+
+my $nrmuser       = '';                       # Provide your NRM user name here ('joebro')
+my $email         = '';                       # Provide your e-mail address here ('joe.brown@email.com')
+my $nrmcomputer   = '';                       # Provide the name of the NRM backup computer here ('xxxx.nrm.se')
+my $nrmpath       = '';                       # Confirm path with NRM-IT ('/dnadata/projects')!
+my $cpuaccount    = '';                       # Account ID for CPU hours on UPPMAX ('snicxxxx-x-xxx')
+my $masterinbox   = '';                       # Full path to MASTER_INBOX folder, or where to recursively find it ('/proj/sllstorexxxxxxx').
+my $VERBOSE       = 1;                        # Set to 0 for noverbose
+my $timedefault   = '10:00:00';               # Default time (h:mm:ss)
+my $mbsdef        = '20';                     # Default assumed transfer speed (20 MB/sec)
+my $rsynccmd      = 'rsync -av -h --exclude=".DS_Store" --exclude="._.DS_Store" -P '; # Testing standard settings.  See END comments.
+my $sbatchcmd     = 'sbatch';
+my $uppmax        = $ENV{HOSTNAME};           # 'rackham.uppmax.uu.se',
+my $whoami        = $ENV{USER};
+my $uppmax_user   = $whoami;
+my $autotime      = 1;                        # Autotime is multiplied by an integer (see GetOptions arg below) 
+my $submit        = 1;                        # Submit script to SLURM (1) or not (0)
+my $mfolder       = 'MASTER_INBOX';           # Name of MASTER_INBOX
+my $time          = q{};
+my $infile        = q{};
+my $source        = q{};
+my $destination   = q{};
+my $display_dest  = q{};
+my $pids          = q{};
+my $nrm_ssh_user  = q{};
+my $mbs           = q{};
+my $date          = prettydate();
+my $jobname       = 'rsync-' . $date . '-' . $mfolder;
+my $outfile       = $jobname . '.slurm';
+
+GetOptions(
+    "autotime:3"     => \$autotime,
+    "cpuaccount=s"   => \$cpuaccount,
+    "email=s"        => \$email,
+    "nrmuser:s"      => \$nrmuser,
+    "submit!"        => \$submit,
+    "time=s"         => \$time,
+    "verbose!"       => \$VERBOSE,
+    "masterinbox=s"  => \$masterinbox,
+    "help"           => sub { exec("perldoc", $0); exit(0); },
+);
+
+if ($masterinbox) {
+    $source = find_master_inbox($masterinbox);
+}
+else {
+    die "You must specify a source folder (the MASTER_INBOX).\n";
+}
+
+if ($nrmpath) {
+    if ($nrmpath =~ /\/$/) {
+        $nrmpath =~ s/\/$//;
+    }
+}
+else {
+    die "Error: nrmpath cannot be empty. Please edit the script itself.\n"
+}
+
+if ($nrmuser) {
+    $nrm_ssh_user = $nrmuser . '@nrm.se';
+}
+else {
+    die "Error: nrmuser cannot be empty.\n"
+}
+
+$display_dest = $nrmpath . '/' . $nrmuser . '/' . $mfolder;
+$destination = $nrmpath . '/' . $nrmuser; 
+
+if ($time) {
+    $time = $time;
+}
+else {
+    $time = $timedefault;
+}
+
+print STDERR "\nSetting up transfer from $uppmax to $nrmcomputer:\n" if $VERBOSE;
+print STDERR "\n" if $VERBOSE;
+print STDERR "    $source -> $display_dest\n" if $VERBOSE;
+print STDERR "\n" if $VERBOSE;
+
+open (my $PRINT, '>', $outfile) or die "$0 : Failed to open output file $outfile : $!\n\n";
+    print $PRINT '#!/bin/bash -l', "\n";
+    print $PRINT "\n";
+    print $PRINT "## backup2nrm script created $date\n";
+    print $PRINT "## Transfer files from $uppmax to $nrmcomputer:\n";
+    print $PRINT "##\n";
+    print $PRINT "##    $source -> $display_dest\n";
+    print $PRINT "##\n";
+    print $PRINT "## Run script on UPPMAX by: sbatch --test-only $outfile\n";
+    print $PRINT "##                and then: sbatch $outfile\n";
+    print $PRINT "## Monitor slurm status by:\n";
+    print $PRINT "##    jobinfo -u $uppmax_user\n";
+    print $PRINT "## Cancel slurm job by:\n";
+    print $PRINT "##    scancel <JOBID>\n";
+    print $PRINT "##    scancel -i -u $uppmax_user\n";
+    print $PRINT "##    scancel --state=pending -u $uppmax_user\n";
+    print $PRINT "\n";
+    print $PRINT "#SBATCH -J $jobname\n";
+    print $PRINT "#SBATCH -A $cpuaccount\n";
+    if ($autotime) {
+        $time = setautotime($source, $destination, $autotime); 
+    }
+    print $PRINT "#SBATCH -t $time\n";
+    print $PRINT "#SBATCH -p core\n";
+    print $PRINT "#SBATCH -n 1\n";
+    if ($email) {
+        print $PRINT "#SBATCH --mail-type=BEGIN,END,FAIL --mail-user=$email\n";
+    }
+    print $PRINT "\n";
+    print $PRINT "## $source\n";
+    print $PRINT $rsynccmd, ' ', $source, ' ', '"', $nrm_ssh_user, '"', '@', $nrmcomputer, ':', $destination, "\n";
+    print $PRINT "\n";
+close($PRINT);
+
+if ($outfile) {
+    if ( -e $outfile ) {
+        chmod 0755, $outfile;
+        print STDERR "\nCreated file $outfile\n\n" if $VERBOSE;
+        if ($submit) {
+            system($sbatchcmd, $outfile); # Not checking system submit status
+            print STDERR "\nSubmitted script $outfile to SLURM.\n" if $VERBOSE;
+            print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
+            print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
+        }
+        else {
+            print STDERR "Run the script on uppmax by first checking:\n\n  sbatch --test-only $outfile\n\n" if $VERBOSE;
+            print STDERR "and then submitting:\n\n  sbatch $outfile\n\n" if $VERBOSE;
+        }
+    }
+    else {
+        die "Could not create script file $outfile : $! \n";
+    }
+}
+
+sub prettydate {
+    ## Returns date string, e.g. "01122015"
+    @_ = localtime(shift || time);
+    return(sprintf("%02d%02d%04d", $_[3], $_[4]+1, $_[5]+1900));
+}
+
+sub setautotime {
+    ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    ## Time calculated from size to be transferred and
+    ## average transfer speed times an extra constant ($extra)
+    ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    my ($src, $dest, $extra) = (@_);
+    my $size = 0;
+    my $speed = 0;
+    my $cmd = 'rsync -a --dry-run --stats';
+    $cmd = $cmd . ' ' . $src . ' ' . "--exclude=\'.DS_Store\' --exclude=\'._.DS_Store\'" . ' ' . "\"$nrm_ssh_user\"" . '@' . "$nrmcomputer:$dest";
+    my @output = `$cmd`;
+    chomp @output;
+    foreach (@output) {
+        if (/Total\s+transferred\s+file\s+size:\s+([\d|,]+)\s+bytes/) {
+            $size = $1;
+            $size =~ s/,//g;
+        }
+        elsif (/total\s+size\s+is\s+([\d|,]+)\s+/) {
+            $size = $1;
+            $size =~ s/,//g;
+        }
+    }
+    my $mbs = dd();
+    $speed = $mbs * (1024 * 1024); # MB/s to bytes/s
+    my $transfertime = ($size / $speed) * $extra;
+    my $s = sprintf "%d", $transfertime;
+    return sprintf "0-00:00:%02d", $s if ($s < 60);
+    my $m = $s / 60;
+    $s %= 60;
+    return sprintf "0-00:%02d:%02d", $m, $s if ($m < 60);
+    my $h = $m / 60;
+    $m %= 60;
+    return sprintf "0-%02d:%02d:%02d", $h, $m, $s if ($h < 24);
+    my $d = $h / 24;
+    $h %= 24;
+    return sprintf "%d-%02d:%02d:%02d", $d, $h, $m, $s;
+}
+
+sub dd {
+    ## Returns MB/s string, e.g. "92.4".
+    ## Test connection speed by sending 1M data to destination.
+    ## Uses 'dd' and 'ssh'. Reads from '/dev/zero' on source,
+    ## and writes to '/dev/null' on destination
+    my $mbs = 0;
+    print STDERR "Testing connection speed. Might take a moment.\n" if $VERBOSE;
+    system("dd if=/dev/zero count=1k bs=1M 2>tmp.stderr.tmp | ssh $nrm_ssh_user\@$nrmcomputer \'cat>/dev/null\'");
+    open my $fh, "<", "tmp.stderr.tmp" or die "could not open tmp.stderr.tmp: $!\n";
+    while(<$fh>) {
+        if (m/([\d|\.]+) MB\/s/) {
+            $mbs = $1; 
+        }
+    }   
+    close($fh);
+    unlink("tmp.stderr.tmp");
+    return $mbs;
+}
+
+sub find_master_inbox {
+    ## Arg is path to start searching: '/proj/sllstore2017093/'
+    ## Need a trailing slash for find.
+    ## Note redirection of all errs to /dev/null
+    ## Reads an arbitrary number of lines
+    ## Returns (example) '/proj/sllstore2017093/MASTER_INBOX'
+    my ($searchpath) = (@_);
+    my $box;
+    if (! -d $searchpath) {
+        die "Error: Can not locate directory $searchpath.\nNeed to provide correct path to MASTER_INBOX, or where to start looking for it.\n";
+    }
+    if ($searchpath =~ /MASTER_INBOX[\/]*$/) {
+        $box = $searchpath;
+    }
+    else {
+        if ($searchpath !~ /\/$/) {
+            $searchpath = $searchpath . '/';
+        }   
+        open FIND, "find $searchpath -maxdepth 4 -type d -name MASTER_INBOX -print -quit 2>/dev/null |";
+        read FIND, my $find_output, 99;
+        close FIND;
+        my @boxes = split(/\n/, $find_output);
+        $box = join('', @boxes);
+    }
+    return $box;
+}
+
+=pod
+
+=head1 NAME
+
+backup_MASTER_INBOX - Backup Files to NRM
+
+=head1 VERSION
+
+Version Wed 13 Dec 2018
+
+=head1 SYNOPSIS
+
+  backup_MASTER_INBOX [options]
+
+=head1 EXAMPLES
+
+B<Transfer files in C</proj/sllstore2017xxx/MASTER_INBOX> to NRM>
+
+  backup_MASTER_INBOX
+
+B<Create SLURM script only>
+
+  backup_MASTER_INBOX --nosubmit
+
+
+=head1 DESCRIPTION
+
+Note, this script (C<backup_MASTER_INBOX>) is a rewrite of C<backup2nrm> and is
+designed to specifically transfer files like this (UPPMAX -E<gt> NRM):
+
+ /proj/sllstore2017xxx/MASTER_INBOX -> /dnadata/projects/nrmuser/MASTER_INBOX
+
+Several of the options avaialble to C<backup2nrm> are hard coded for convenience.
+This also means that you need to edit the script before the first time it is used.
+
+The C<backup_MASTER_INBOX>-script generates yet another script (in the current 
+working directory) with instructions on how to transfer files from UPPMAX to NRM.
+
+You may review the generated transfer-script and if found appropriate, submit 
+the script to the SLURM system.
+
+The C<backup_MASTER_INBOX>-script has a number of options that could be of use (see B<OPTIONS> below). 
+
+Generates file C<< rsync-E<lt>dateE<gt>-MASTER_INBOX.slurm >> in the current working directory.
+
+The user of the script needs to have accounts on both UPPMAX and NRM, and the script should be run on UPPMAX.
+
+No extensive error checking.
+
+=head2 Transfer speed
+
+Transfer speed between UPPMAX and NRM varies erratically (0.1 - >100 MB/s).
+To estimate the time needed for the slurm script, I assume a transfer speed of 20MB/s, and add 20%.
+This value will probably need to be adjusted.
+Note: 1 Mbps = 0.125 MB/s.
+
+=head2 NRM authentication
+
+Authentication to NRM server is done using SSH-keys: Your C<rda_sa.pub> needs to be know to NRM-IT.
+Internally, NRM user name is send in the form C<"nrmuser@nrm.se"> (and not as C<NRM\\nrmuser> or C<nrmuser>).
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-m, --masterinbox=E<lt>/path/to/MASTER_INBOXE<gt>>
+
+Full path to folder MASTER_INBOX, or where to start looking for it (e.g. '/proj/sllstore2017xxx/MASTER_INBOX', or '/proj/sllstore2017xxx').
+
+=item B<-s, --submit>
+
+Submit to cluster (calling C<sbatch>). Default: B<-submit>.
+
+=item B<-e, --email=E<lt>emailE<gt>>
+
+Send messages from the cluster to <email>.
+
+=item B<-n, --nrmuser=E<lt>userE<gt>>
+
+User on NRM.
+
+=item B<-c, --cpuaccount=E<lt>accountid<gt>>
+
+Account for compute hours on UPPMAX, e.g. 'snic2017-1-xxx'.
+
+=item B<-t, --time=E<lt>timeE<gt>>
+
+Set run time manually for script. Use format C<D-H:MM:SS>, e.g. C<0-3:00:00>.
+Default is to use C<autotime> (see below).
+
+=item B<-a, --autotime=E<lt><intE<gt>>
+
+Try to estimate optimal runtime. The estimated time is multiplied by an integer (default:3)
+to add some extra time margin. This integer can be changed using, e.g. B<-noautotime=4>.
+
+
+=item B<-h, --help>
+
+Help text.
+
+=back
+
+=head1 TODO
+
+=over
+
+=item * How does script behave if no ssh keys? dd will fail there: capture error then, or before?
+
+=item * If time less than 15(?) mins, use devcore partition?
+
+=item * Test different rsync+ssh options for speed.
+
+=item * Change $nrmuser to (empty) values for master script and test!
+
+=back
+
+=head1 AUTHOR
+
+Johan Nylander L<<johan.nylanderATnrm.se>>
+
+=head1 COPYRIGHT AND LICENSE
+
+This software is copyright (c) 2017,2018 by Johan Nylander.
+
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
+
+=cut
+
