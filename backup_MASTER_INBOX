@@ -3,8 +3,8 @@
 #=====================================================================
 # Transfer files from UPPMAX's project MASTER_INBOX to designated
 # MASTER_INBOX folder on NRM.
-# Use `backup2nrm -h`, or `perldoc backup2nrm`, or see end of this
-# file for description.
+# Use `backup_MASTER_INBOX -h`, or `perldoc backup_MASTER_INBOX`, or
+# see end of this file for description.
 #=====================================================================
 
 use strict;
@@ -19,6 +19,7 @@ my $cpuaccount    = '';                       # Account ID for CPU hours on UPPM
 my $masterinbox   = '';                       # Full path to MASTER_INBOX folder, or where to recursively find it ('/proj/sllstorexxxxxxx').
 my $VERBOSE       = 1;                        # Set to 0 for noverbose
 my $timedefault   = '10:00:00';               # Default time (h:mm:ss)
+my $timeminimum   = '15';                     # Default time minimum (minutes)
 my $mbsdef        = '20';                     # Default assumed transfer speed (20 MB/sec)
 my $rsynccmd      = 'rsync -av -h --exclude=".DS_Store" --exclude="._.DS_Store" -P '; # Testing standard settings.  See END comments.
 my $sbatchcmd     = 'sbatch';
@@ -155,7 +156,10 @@ sub setautotime {
     ## Time calculated from size to be transferred and
     ## average transfer speed times an extra constant ($extra)
     ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    ## Will return timeminimum if required time is below timeminimum.
+    ## Will exit if no files to be transferred.
     my ($src, $dest, $extra) = (@_);
+    print STDERR "Counting files. Might take a moment.\n" if $VERBOSE;
     my $size = 0;
     my $speed = 0;
     my $cmd = 'rsync -a --dry-run --stats';
@@ -167,22 +171,52 @@ sub setautotime {
             $size = $1;
             $size =~ s/,//g;
         }
-        elsif (/total\s+size\s+is\s+([\d|,]+)\s+/) {
-            $size = $1;
-            $size =~ s/,//g;
+    }
+    if ($size == 0) {
+        my $nfiles = 0;
+        foreach (@output) {
+            if (/Number\s+of\s+created\s+files:\s+(\d+)\s+/) {
+                $nfiles = $1;
+            }
+        }
+        if ($nfiles == 0) {
+            print STDERR "\nNote: rsync could not find any files that need to be transferred.\n";
+            print STDERR "Exiting.\n\n";
+            if ($PRINT) {
+                close($PRINT);
+                if (-e $outfile) {
+                    unlink $outfile or die "Could not remove $outfile\n";
+                }
+            }
+            exit;
+        }
+        else {
+            die "\nError: could not determine size of files to transfer.\n";
         }
     }
     my $mbs = dd();
     $speed = $mbs * (1024 * 1024); # MB/s to bytes/s
     my $transfertime = ($size / $speed) * $extra;
     my $s = sprintf "%d", $transfertime;
-    return sprintf "0-00:00:%02d", $s if ($s < 60);
+    # If file size is very small, s will be 0.
+    if ($s < 60) {
+        return "0-00:$timeminimum:00";
+    }
     my $m = $s / 60;
     $s %= 60;
-    return sprintf "0-00:%02d:%02d", $m, $s if ($m < 60);
+    if (($m < 60)) {
+        if ($timeminimum <= $m) {
+            return "0-00:$timeminimum:00";
+        }
+        else {
+            return sprintf "0-00:%02d:%02d", $m, $s;
+        }
+    }
     my $h = $m / 60;
     $m %= 60;
-    return sprintf "0-%02d:%02d:%02d", $h, $m, $s if ($h < 24);
+    if ($h < 24) {
+        return sprintf "0-%02d:%02d:%02d", $h, $m, $s;
+    }
     my $d = $h / 24;
     $h %= 24;
     return sprintf "%d-%02d:%02d:%02d", $d, $h, $m, $s;
@@ -208,11 +242,11 @@ sub dd {
 }
 
 sub find_master_inbox {
-    ## Arg is path to start searching: '/proj/sllstore2017093/'
+    ## Arg is path to start searching: '/proj/sllstoreXXXXXXX/'
     ## Need a trailing slash for find.
     ## Note redirection of all errs to /dev/null
     ## Reads an arbitrary number of lines
-    ## Returns (example) '/proj/sllstore2017093/MASTER_INBOX'
+    ## Returns (example) '/proj/sllstoreXXXXXXX/MASTER_INBOX'
     my ($searchpath) = (@_);
     my $box;
     if (! -d $searchpath) {
@@ -242,7 +276,7 @@ backup_MASTER_INBOX - Backup Files to NRM
 
 =head1 VERSION
 
-Version Wed 13 Dec 2018
+Version Tue 15 Jan 2019
 
 =head1 SYNOPSIS
 
