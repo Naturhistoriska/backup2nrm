@@ -1,4 +1,4 @@
-#!/usr/bin/env perl 
+#!/usr/bin/env perl
 
 #=====================================================================
 # Transfer files from UPPMAX's project INBOX to project folder on NRM.
@@ -8,11 +8,7 @@
 
 =pod
 
-    TODO: * Adjust for the fact that project IDS are listed twice on Loves' rackham project:
-            /proj/sllstore2017093/b2016073/b2016073/INBOX
-          * Supply a path, check for INBOXes in that path, create a rsync command for that path
-          * Alternative use?: check for INBOXes in supplied path, create a file with that list, supply that file as input
-  
+
 =cut
 
 
@@ -23,23 +19,23 @@ use Getopt::Long;
 use File::Find;
 no warnings "File::Find";
 
-my $nrmuser          = '';                       # Provide your NRM user name here, e.g. 'joebro'
-my $mailuser         = '';                       # Provide your e-mail address here, e.g. 'joe.brown@email.com'
-my $nrmcomputer      = '';                       # Provide the name of the NRM backup computer here, 'xxxx.nrm.se'
-my $nrmpath          = '';                       # Confirm path with NRM-IT!
-my $cpuaccount       = '';                       # Account ID for CPU hours on UPPMAX ('snicxxxx-x-xxx')
-my $findinboxes      = '';                       # Locate inboxes recursively starting in this location.
-my $VERBOSE          = 1;                        # Set to 0 for noverbose
-my $timedefault      = '10:00:00';               # Default time (h:mm:ss)
-my $mbsdef           = '20';                     # Default assumed transfer speed (20 MB/sec)
-my $rsynccmd         = "rsync -av -P ";          # Testing standard settings.  See END comments.
-my $rsynccmd_ssh     = ' ';                      # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
+my $nrmuser          = '';                        # Provide your NRM user name here, e.g. 'joebro'. Note, if you use the account on the old nrmdna.nrm.se, you need to write 'joebro@nrm.se'
+my $mailuser         = '';                        # Provide your e-mail address here, e.g. 'joe.brown@email.com'
+my $nrmcomputer      = 'nrmdna01.nrm.se';         # Provide the name of the NRM backup computer here, 'nrmdna01.nrm.se'
+my $nrmpath          = '/projects/BIO-projects';  # Provide path on nrmdna01, ending in '/'. E.g. "/projects/BIO-projects/". Confirm path with NRM-IT!
+my $cpuaccount       = '';                        # Account ID for CPU hours on UPPMAX ('snicxxxx-x-xxx')
+my $findinboxes      = '';                        # Locate inboxes recursively starting in this location.
+my $VERBOSE          = 1;                         # Set to 0 for noverbose
+my $timedefault      = '10:00:00';                # Default time (h:mm:ss)
+my $mbsdef           = '20';                      # Default assumed transfer speed (20 MB/sec)
+my $rsynccmd         = "rsync -av -P ";           # Testing standard settings.  See END comments.
+my $rsynccmd_ssh     = ' ';                       # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
 my $rsynccmd_exc     = " --exclude \'best_practice_qc/\' ";
 my $sbatchcmd        = 'sbatch';
-my $uppmax           = $ENV{HOSTNAME};           # 'rackham.uppmax.uu.se';
+my $uppmax           = $ENV{HOSTNAME};            # 'rackham.uppmax.uu.se';
 my $whoami           = $ENV{USER};
 my $uppmax_user      = $whoami;
-my $autotime         = 0;                        # Autotime is multiplied by an integer (see GetOptions arg below) 
+my $autotime         = 0;                         # Autotime is multiplied by an integer (see GetOptions arg below) 
 my $exclude          = 0;
 my $submit           = 0;
 my $time             = q{};
@@ -56,7 +52,7 @@ GetOptions(
     "cpuaccount=s"    => \$cpuaccount,
     "infile|file=s"   => \$infile,
     "mail-user=s"     => \$mailuser,
-    "nrm-user:s"      => \$nrmuser,
+    "nrm-user=s"      => \$nrmuser,
     "submit!"         => \$submit,
     "time=s"          => \$time,
     "verbose!"        => \$VERBOSE,
@@ -76,11 +72,13 @@ if ($findinboxes) {
 }
 
 if ($nrmuser) {
-    $nrmcomputer_user = $nrmuser . '@nrm.se';
+    #$nrmcomputer_user = $nrmuser . '@nrm.se';
+    $nrmcomputer_user = $nrmuser;
 }
 else {
     $nrmuser = $uppmax_user; # Try uppmax user. Might fail!
-    $nrmcomputer_user = $uppmax_user . '@nrm.se';
+    #$nrmcomputer_user = $uppmax_user . '@nrm.se';
+    $nrmcomputer_user = $nrmuser;
 }
 
 if ($time) {
@@ -95,6 +93,10 @@ if ($exclude) {
 }
 else {
     $rsynccmd = $rsynccmd . $rsynccmd_ssh;
+}
+
+if ( ! ($nrmpath =~ m/.+\/$/) ) {
+    $nrmpath = $nrmpath . '/';
 }
 
 ## Thu 08 Feb 2018 12:46:37 PM CET: Adjust to accomodate these alternative strings
@@ -198,8 +200,7 @@ sub populate_hash {
     ## b2016073                                        -> points at /dnadata/projects/lovedale/b2016073/INBOX
     ## sllstore2017093                                 -> points at 12 different projects!
     #
-    # perhaps first find_inboxes, then split that list (which will start in /proj/, and end in INBOX)?
-    # 
+    # Perhaps first find_inboxes, then split that list (which will start in /proj/, and end in INBOX)?
 
     my ($string) = (@_);
     my ($destination_path, $h, $p, $projid, $folder, @restpath);
@@ -295,7 +296,7 @@ sub dd {
         if (m/([\d|\.]+) MB\/s/) {
             $mbs = $1; 
         }
-    }   
+    }
     close($fh);
     unlink("tmp.stderr.tmp");
     return $mbs;
@@ -309,7 +310,7 @@ sub find_inboxes {
     my ($searchpath) = (@_);
     if ($searchpath !~ /\/$/) {
         $searchpath = $searchpath . '/';
-    }   
+    }
     open FIND, "find $searchpath -maxdepth 4 -type d -name INBOX 2>/dev/null |";
     read FIND, my $find_output, 99999;
     close FIND;
@@ -335,7 +336,7 @@ sub find_inboxes {
 #         }
 #     }
 # }
-# 
+#
 # sub inboxes {
 #     my @list = ();
 #     my ($dev, $ino, $mode, $nlink, $uid, $gid);
@@ -365,7 +366,7 @@ Version Tue 06 Feb 2018 05:16:56 PM CET
 
 B<Transfer files in C</proj/b1234567/INBOX>>
 
-  backup2nrm b2014312 
+  backup2nrm b2014312
 
 B<Transfer files in specific folder (full path!)>
 
