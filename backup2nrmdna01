@@ -93,7 +93,7 @@ else {
 }
 
 if ($email) {
-    print STDERR "# backup2nrmdn01: Will use email $email for SLURM information\n";
+    print STDERR "# backup2nrmdn01: Will use email $email\n";
 }
 
 if ($autotime) {
