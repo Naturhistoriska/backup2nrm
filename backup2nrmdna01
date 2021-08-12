@@ -61,38 +61,39 @@ GetOptions(
 
 ## Check options
 if ($cpuaccount) {
-    print STDERR "Will use CPU-account: $cpuaccount\n" if ($VERBOSE);
+    print STDERR "# backup2nrmdn01: Will use CPU-account $cpuaccount\n" if ($VERBOSE);
 }
 else {
-    die "Error: need to provide a CPU-account using the \'-c\' option.\n";
+    die "# backup2nrmdn01: Error: need to provide a CPU-account using the \'-c\' option.\n";
 }
 
 if ($nrmuser) {
     $nrmcomputer_user = $nrmuser;
-    print STDERR "Will use NRM user account: $nrmcomputer_user\n" if ($VERBOSE);
+    print STDERR "# backup2nrmdn01: Will use NRM user account $nrmcomputer_user\n" if ($VERBOSE);
 }
 else {
-    die "Error: need to provide a user on $nrmcomputer using the \'-u\' option.\n";
+    die "# backup2nrmdn01: Error: need to provide a user on $nrmcomputer using the \'-u\' option.\n";
 }
 
 if ($nrmpath) {
     if ( ! ($nrmpath =~ m/.+\/$/) ) {
         $nrmpath = $nrmpath . '/';
     }
-    print STDERR "Will use destination path: $nrmpath.\n" if ($VERBOSE);
+    print STDERR "# backup2nrmdn01: Will use destination path $nrmpath\n" if ($VERBOSE);
 }
 else {
     if ($department) {
         $nrmpath = '/projects/' . $department . "-projects/$nrmcomputer_user/";
-        print STDERR "NOTE: No destination path provided.\nWill use $nrmpath.\n";
+        print STDERR "# backup2nrmdn01: No destination path provided,\n";
+        print STDERR "# backup2nrmdn01: Will use destination path $nrmpath.\n";
     }
     else {
-        die "Error: Need to provide a department (\'-d\') or full destination path (\'-p\'). See documentation.\n";
+        die "# backup2nrmdn01: Error: Need to provide a department (\'-d\') or full destination path (\'-p\'). See documentation.\n";
     }
 }
 
 if ($autotime) {
-    print STDERR "Will use autotime to set max time for slurm job\n" if ($VERBOSE);
+    print STDERR "# backup2nrmdn01: Will use autotime to set max time for slurm job\n" if ($VERBOSE);
 }
 if ($time) {
     $time = $time;
@@ -135,7 +136,7 @@ $rsynccmd = $rsynccmd . $rsynccmd_ssh; # tmp
 
 ## Read file paths
 if ($infile) {
-    open my $INFILE, "<", $infile or die "Could not open infile $!\n";
+    open my $INFILE, "<", $infile or die "# backup2nrmdn01: Error: Could not open infile $!\n";
     while(<$INFILE>) {
         my $string = $_;
         chomp($string);
@@ -164,7 +165,7 @@ foreach my $string (sort keys %HoH) {
     my $jobname = 'rsync-' . $date . '.' . $i . '-' . $folder . '-' . $projectid;
     my $outfile = $jobname . '.slurm';
 
-    open (my $PRINT, '>', $outfile) or die "$0 : Failed to open output file $outfile : $!\n\n";
+    open (my $PRINT, '>', $outfile) or die "# backup2nrmdn01: Error: Failed to open output file $outfile : $!\n\n";
 
     print $PRINT '#!/bin/bash -l', "\n";
     print $PRINT "\n";
@@ -217,16 +218,16 @@ foreach my $string (sort keys %HoH) {
             ## Submit or not
             if ($submit) {
                 system($sbatchcmd, $outfile); # Not checking system submit status
-                print STDERR "Submitted script $outfile to SLURM.\n" if $VERBOSE;
-                print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
-                print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
+                print STDERR "# backup2nrmdn01: Submitted script $outfile to SLURM.\n" if $VERBOSE;
+                print STDERR "\n# backup2nrmdn01: Check status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
+                print STDERR "\n# backup2nrmdn01: Cancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
             }
             else {
-                print "Run the script on uppmax by:\n\n  sbatch $outfile\n\n";
+                print "# backup2nrmdn01: Run the script on uppmax by:\n\n  sbatch $outfile\n\n";
             }
         }
         else {
-            die "Could not create script file $outfile : $! \n";
+            die "# backup2nrmdn01: Error: Could not create script file $outfile : $! \n";
         }
     }
     $i++;
@@ -245,7 +246,7 @@ sub populate_hash {
             ($c, $h, $p, $projid, @restpath) = split /\//, $string;
         }
         else {
-            die "Error: Could not read path from string \"$string\"\n";
+            die "# backup2nrmdn01: Error: Could not read path from string \"$string\"\n";
         }
         $folder = pop(@restpath);
         chomp($folder);
@@ -255,7 +256,7 @@ sub populate_hash {
         $HoH{$string}{'projectid'} = $projid;
     }
     else {
-        die "Error: does folder (or project) \"$string\" exist?\n";
+        die "# backup2nrmdn01: Error: does folder (or project) \"$string\" exist?\n";
     }
 }
 
@@ -314,7 +315,7 @@ sub dd {
     ## Uses 'dd' and 'ssh'. Reads from '/dev/zero' on source,
     ## and writes to '/dev/null' on destination
     my $mbs = 0;
-    print STDERR "Testing connection speed. Might take a moment.\n";
+    print STDERR "# backup2nrmdn01: Testing connection speed. Might take a moment.\n";
     system("dd if=/dev/zero count=1k bs=1M 2>tmp.stderr.tmp | ssh $nrmcomputer_user\@$nrmcomputer \'cat>/dev/null\'");
     open my $fh, "<", "tmp.stderr.tmp" or die "could not open tmp.stderr: $!\n";
     while(<$fh>) {
