@@ -213,14 +213,14 @@ foreach my $string (sort keys %HoH) {
     if ($outfile) {
         if(-e $outfile) {
             chmod 0755, $outfile;
-            print STDERR "\nCreated file $outfile\n" if $VERBOSE;
+            print STDERR "# backup2nrmdn01: Created file $outfile\n" if $VERBOSE;
 
             ## Submit or not
             if ($submit) {
                 system($sbatchcmd, $outfile); # Not checking system submit status
                 print STDERR "# backup2nrmdn01: Submitted script $outfile to SLURM.\n" if $VERBOSE;
-                print STDERR "\n# backup2nrmdn01: Check status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
-                print STDERR "\n# backup2nrmdn01: Cancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
+                print STDERR "# backup2nrmdn01: Check status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
+                print STDERR "# backup2nrmdn01: Cancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
             }
             else {
                 print "# backup2nrmdn01: Run the script on uppmax by:\n\n  sbatch $outfile\n\n";
@@ -416,7 +416,7 @@ Authentication to NRM server is done using SSH-keys: Your C<rda_sa.pub> needs to
 
 =item B<-i, --infile INFILE>
 
-File with a list of directories (full paths!) to be backed up.
+File with a list of directories (full paths!) to be backed up. MOSTLY UNTESTED!
 
 =item B<-s, --submit>
 
