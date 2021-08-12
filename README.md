@@ -1,69 +1,49 @@
 # backup2nrm
 
-TODO: rewrite for decomission of milou:
+- Last modified: tor aug 12, 2021  07:52
+- Sign: JN
 
+## Description
 
+Script for transferring UPPMAX files to backup server on NRM.
 
-Backup script for transferring UPPMAX files to NRM.
+The current backup server is named nrmdna01.nrm.se and has limited access.
+
+For transfer, we use rsync over ssh.
 
 Assuming file structure similar to:
 
 - On rackham:
 
-        /proj/sllstore2017-x-xxx
+        /proj/projectname
 
-- On NRM:
+- On NRM (where XXX is a department acronym, currently in use: BIO, BOT, ZOO, and nrmuser is the user in the Windows ActiveDirectory)
 
-        /dnadata/projects/nrmuser
-
-
-**OLD:**
-
-- On milou:
-
-        /proj/b1234567/INBOX/A.Name_12_34
-
-- On NRM:
-
-        /dnadata/projects/nrmuser/b1234567/INBOX/A.Name_12_34
-
-
-We wish to be able to do `backup2nrm b1234567` in order to sync files in the INBOXes
-
-Then, in principle, it would suffice issuing this command (on UPPMAX):
-
-    backup2nrm -s -a b1234567
-
-The command above will:
-
-1. Connect to NRM with `rsync` to find out the size of all files needed to be transferred
-2. Send some test data to NRM to estimate the transfer speed
-3. Create a slurm script in the current working directory
-4. Submit the slurm script to the batch system on UPPMAX
-
-An alternative usage (only item 3. above), is 
-
-    backup2nrm b1234567
-
-Then, the user need to review the generated slurm script, and submit it manually
-using `sbatch slurmscript`.
-
-
-## Usage
-
-For detailed information, use `backup2nrm -h`
+        /projects/XXX-projects/nrmuser
 
 ## Installation
 
 0. From NRM IT-support, get information about
     1. Name and IP address for the NRM backup computer (below called `nrmcomputer`).
     2. User name on the backup computer (prob. same as your Windows user). Below called `nrmuser`.
-    3. Directory structure on NRM backup computer (e.g. `/dnadata/projects/`)
+    3. Directory structure on NRM backup computer (e.g. `/projects/BIO-projects`)
+    4. How to set up "passwordless communication between uppmax and nrmdna01.nrm.se"
 1. Login to UPPMAX (`rackham.uppmax.uu.se`)
 2. Clone the repository from [https://github.com/NBISweden/backup2nrm.git](https://github.com/NBISweden/backup2nrm.git), using
     - `git clone https://github.com/NBISweden/backup2nrm.git`
-3. Edit the `backup2nrm` file to add values for
+3. Put the file `backup2nrmdna01` in your PATH (on UPPMAX)
+4. For convenience, edit the `backup2nrmdna01` file to add values for
     1. `$nrmuser`
-    2. `$mailuser`
-    3. `$nrmcomputer`
-4. Put the file `backup2nrm` in your PATH (on UPPMAX)
+    2. `$email`
+    3. `$department`
+    4. (`$nrmpath`)
+    5. (`$cpuaccount`)
+
+## Usage
+
+For detailed information, use `backup2nrmdna01 -h`
+
+One example (run on uppmax, and with some default values edited in the script):
+
+    $ backup2ndmdna01 -c snic123-45-678 -autotime -s /proj/snic123-45-678/delivery012345
+
