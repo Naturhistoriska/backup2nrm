@@ -92,6 +92,10 @@ else {
     }
 }
 
+if ($email) {
+    print STDERR "# backup2nrmdn01: Will use email $email for SLURM information\n";
+}
+
 if ($autotime) {
     print STDERR "# backup2nrmdn01: Will use autotime to set max time for slurm job\n" if ($VERBOSE);
 }
