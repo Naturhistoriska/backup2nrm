@@ -189,7 +189,6 @@ foreach my $string (sort keys %HoH) {
     print $PRINT "\n";
     print $PRINT "#SBATCH -J $jobname\n";
     print $PRINT "#SBATCH -A $cpuaccount\n";
-    print $PRINT "#SBATCH -A $projectid\n";
 
     if ($autotime) {
         $time = setautotime($source, $destination, $exclude, $autotime); 
