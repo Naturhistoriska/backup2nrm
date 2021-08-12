@@ -1,0 +1,476 @@
+#!/usr/bin/env perl
+
+#=======================================================
+# Transfer files from UPPMAX to project folder on NRM.
+# Use `backup2nrmdn01 -h`, or `perldoc backup2nrmdna01`,
+# or see end of this file for description.
+#=======================================================
+
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long;
+use File::Find;
+no warnings "File::Find";
+
+###################################################
+## EDIT VARIABLES IN THIS SECTION FOR CONVENIENCE #
+my $nrmuser          = '';                        # Provide your NRM user name here, e.g. 'joebro'. Note, if you use the account on the old nrmdna.nrm.se, you need to write 'joebro@nrm.se'
+my $email            = '';                        # Provide your e-mail address here, e.g. 'joe.brown@email.com'
+my $department       = '';                        # Provide your NRM department acronym here (currently used: BIO/BOT/ZOO)
+my $nrmpath          = '';                        # Provide destination path on nrmdna01. E.g. "/projects/BIO-projects/joebro/NGI/".
+my $cpuaccount       = '';                        # Account ID for CPU hours on UPPMAX ('snicxxxx-x-xxx')
+###################################################
+my $nrmcomputer      = 'nrmdna01.nrm.se';         # Current name (2021): 'nrmdna01.nrm.se'
+my $timedefault      = '10:00:00';                # Default time (h:mm:ss)
+my $mbsdef           = '20';                      # Default assumed transfer speed (20 MB/sec)
+my $rsynccmd         = "rsync -av -P ";           # Testing standard settings.  See END comments.
+my $rsynccmd_ssh     = ' ';                       # " -e \'ssh -T -c aes128-gcm\@openssh.com -o Compression=no -x\' ";
+my $rsynccmd_exc     = " --exclude \'best_practice_qc/\' "; # TODO: check this command
+my $exclude          = ''; # TODO: check this command
+my $sbatchcmd        = 'sbatch';
+my $uppmax           = $ENV{HOSTNAME};            # 'rackham.uppmax.uu.se';
+my $whoami           = $ENV{USER};
+my $uppmax_user      = $whoami;
+my $VERBOSE          = 1;                         # Set to 0 for noverbose
+my $autotime         = 0;                         # Autotime is multiplied by an integer (see GetOptions arg below) 
+my $submit           = 0;
+my $time             = q{};
+my $infile           = q{};
+my $pids             = q{};
+my $nrmcomputer_user = q{};
+my $mbs              = q{};
+my $date             = prettydate();
+my %HoH              = ();
+
+## Get options
+GetOptions(
+    "autotime:3"       => \$autotime,
+    "cpuaccount=s"     => \$cpuaccount,
+    "department=s"     => \$department,
+    "email=s"          => \$email,
+    "infile|file=s"    => \$infile,
+    "p|nrm-path=s"     => \$nrmpath,
+    "submit!"          => \$submit,
+    "time=s"           => \$time,
+    "u|nrm-user=s"     => \$nrmuser,
+    "verbose!"         => \$VERBOSE,
+    "x|exclude=s"      => \$exclude,
+    "help"             => sub { exec("perldoc", $0); exit(0); },
+);
+
+## Check options
+if ($cpuaccount) {
+    print STDERR "Will use CPU-account: $cpuaccount\n" if ($VERBOSE);
+}
+else {
+    die "Error: need to provide a CPU-account using the \'-c\' option.\n";
+}
+
+if ($nrmuser) {
+    $nrmcomputer_user = $nrmuser;
+    print STDERR "Will use NRM user account: $nrmcomputer_user\n" if ($VERBOSE);
+}
+else {
+    die "Error: need to provide a user on $nrmcomputer using the \'-u\' option.\n";
+}
+
+if ($nrmpath) {
+    if ( ! ($nrmpath =~ m/.+\/$/) ) {
+        $nrmpath = $nrmpath . '/';
+    }
+    print STDERR "Will use destination path: $nrmpath.\n" if ($VERBOSE);
+}
+else {
+    if ($department) {
+        $nrmpath = '/projects/' . $department . "-projects/$nrmcomputer_user/";
+        print STDERR "NOTE: No destination path provided.\nWill use $nrmpath.\n";
+    }
+    else {
+        die "Error: Need to provide a department (\'-d\') or full destination path (\'-p\'). See documentation.\n";
+    }
+}
+
+if ($autotime) {
+    print STDERR "Will use autotime to set max time for slurm job\n" if ($VERBOSE);
+}
+if ($time) {
+    $time = $time;
+}
+else {
+    $time = $timedefault;
+}
+
+# if ($exclude) {
+#     # TODO
+#     # Construct an exclude command from the string in $exclude:
+#     # $rsynccmd_exc     = " --exclude \'best_practice_qc/\' ";
+#     # One should probably repeat the --exclude argument for rsync if several different folders
+#     # The syntax and behaviour of rsync's --exclude is
+#     #        --exclude=PATTERN       exclude files matching PATTERN
+#     #        --exclude-from=FILE     read exclude patterns from FILE
+#
+#     ## Note: checking if argumentto exclude using the approach below will
+#     ## fail if user wants to exclude a file!
+#     if (-e -f -r $exclude) {
+#         ## argument is a file
+#         open my $EXFILE, "<", $exclude or die "Could not open file $!\n";
+#         while (<$EXFILE>) {
+#             my $string = $_;
+#             chomp($string);
+#             next if ($string =~ /^\s*$/);
+#             # ...
+#         }
+#         close($EXFILE);
+#     }
+#     else {
+#         ## argument is a string
+#     }
+#     $rsynccmd = $rsynccmd . $rsynccmd_exc . $rsynccmd_ssh;
+# }
+# else {
+#     $rsynccmd = $rsynccmd . $rsynccmd_ssh;
+# }
+$rsynccmd = $rsynccmd . $rsynccmd_ssh; # tmp
+
+## Read file paths
+if ($infile) {
+    open my $INFILE, "<", $infile or die "Could not open infile $!\n";
+    while(<$INFILE>) {
+        my $string = $_;
+        chomp($string);
+        next if ($string =~ /^\s*$/);
+        $string =~ s/\/$//;
+        populate_hash($string);
+    }
+    close($INFILE);
+}
+else {
+    while (my $string = shift) {
+        chomp($string);
+        $string =~ s/\/$//;
+        populate_hash($string);
+    }
+}
+
+## Print batch file, and submit
+my $i = 0;
+foreach my $string (sort keys %HoH) {
+
+    my $projectid = $HoH{$string}->{'projectid'};
+    my $source = $HoH{$string}->{'source'};
+    my $destination = $HoH{$string}->{'destination'};
+    my $folder = $HoH{$string}->{'folder'};
+    my $jobname = 'rsync-' . $date . '.' . $i . '-' . $folder . '-' . $projectid;
+    my $outfile = $jobname . '.slurm';
+
+    open (my $PRINT, '>', $outfile) or die "$0 : Failed to open output file $outfile : $!\n\n";
+
+    print $PRINT '#!/bin/bash -l', "\n";
+    print $PRINT "\n";
+    print $PRINT "## backup2nrm script created $date\n";
+    print $PRINT "## Transfer files from $uppmax to $nrmcomputer:\n";
+    print $PRINT "##\n";
+    print $PRINT "##    $source -> $destination\n";
+    print $PRINT "##\n";
+    print $PRINT "## Run script on UPPMAX by: sbatch --test-only $outfile\n";
+    print $PRINT "##                and then: sbatch $outfile\n";
+    print $PRINT "## Monitor slurm status by:\n";
+    print $PRINT "##    jobinfo -u $uppmax_user\n";
+    print $PRINT "## Cancel slurm job by:\n";
+    print $PRINT "##    scancel <JOBID>\n";
+    print $PRINT "##    scancel -i -u $uppmax_user\n";
+    print $PRINT "##    scancel --state=pending -u $uppmax_user\n";
+    print $PRINT "\n";
+    print $PRINT "#SBATCH -J $jobname\n";
+    print $PRINT "#SBATCH -A $cpuaccount\n";
+    print $PRINT "#SBATCH -A $projectid\n";
+
+    if ($autotime) {
+        $time = setautotime($source, $destination, $exclude, $autotime); 
+    }
+
+    print $PRINT "#SBATCH -t $time\n";
+    print $PRINT "#SBATCH -p core\n";
+    print $PRINT "#SBATCH -n 1\n";
+
+    if ($email) {
+        print $PRINT "#SBATCH --mail-type=BEGIN,END,FAIL --mail-user=$email\n";
+    }
+
+    print $PRINT "\n";
+    print $PRINT "## $string\n";
+    print $PRINT $rsynccmd, ' ', $source, ' ', $nrmcomputer_user, '@', $nrmcomputer, ':', $destination, "\n";
+    print $PRINT "\n";
+
+    close($PRINT);
+
+    if ($outfile) {
+        if(-e $outfile) {
+            chmod 0755, $outfile;
+            print STDERR "\nCreated file $outfile\n" if $VERBOSE;
+
+            ## Submit or not
+            if ($submit) {
+                system($sbatchcmd, $outfile); # Not checking system submit status
+                print STDERR "Submitted script $outfile to SLURM.\n" if $VERBOSE;
+                print STDERR "\nCheck status by using, e.g.,\n\n  jobinfo -u $uppmax_user\n" if $VERBOSE;
+                print STDERR "\nCancel job by using, e.g.,\n\n  scancel -u $uppmax_user -i\n" if $VERBOSE;
+            }
+            else {
+                print "Run the script on uppmax by:\n\n  sbatch $outfile\n\n";
+            }
+        }
+        else {
+            die "Could not create script file $outfile : $! \n";
+        }
+    }
+    $i++;
+}
+
+sub populate_hash {
+    ## Set source/destination values in global %HoH
+    my ($string) = (@_);
+    my ($c, $h, $p, $projid, $folder, @restpath);
+
+    if (-d "$string") {
+        if ($string =~ /^\/proj\//) {
+            ($h, $p, $projid, @restpath) = split /\//, $string;
+        }
+        elsif ($string =~ /^\/crex(\d*)\/proj/) {
+            ($c, $h, $p, $projid, @restpath) = split /\//, $string;
+        }
+        else {
+            die "Error: Could not read path from string \"$string\"\n";
+        }
+        $folder = pop(@restpath);
+        chomp($folder);
+        $HoH{$string}{'folder'} = $folder;
+        $HoH{$string}{'source'} = $string;
+        $HoH{$string}{'destination'} = $nrmpath;
+        $HoH{$string}{'projectid'} = $projid;
+    }
+    else {
+        die "Error: does folder (or project) \"$string\" exist?\n";
+    }
+}
+
+sub prettydate {
+    ## Returns date string, e.g. "01122015"
+    @_ = localtime(shift || time);
+    return(sprintf("%02d%02d%04d", $_[3], $_[4]+1, $_[5]+1900));
+}
+
+sub setautotime {
+    ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    ## Time calculated from size to be transferred and
+    ## average transfer speed times an extra constant ($extra)
+    ## Returns time string (D-H:MM:SS), e.g. "0-3:00:00"
+    my ($src, $dest, $exl, $extra) = (@_);
+    my $size = 0;
+    my $speed = 0;
+    my $cmd = 'rsync -an --stats';
+    #if ($exl) {
+    #    $cmd = $cmd . ' ' . $rsynccmd_exc . ' ' . $src . ' ' . "$nrmcomputer_user" . '@' . "$nrmcomputer:$dest";
+    #}
+    #else {
+        $cmd = $cmd . ' ' . $src . ' ' . "$nrmcomputer_user" . '@' . "$nrmcomputer:$dest";
+    #}
+    my @output = `$cmd`;
+    chomp @output;
+    foreach (@output) {
+        if (/Total\s+transferred\s+file\s+size:\s+([\d|,]+)\s+bytes/) {
+            $size = $1;
+            $size =~ s/,//g;
+        }
+        elsif (/total\s+size\s+is\s+([\d|,]+)\s+/) {
+            $size = $1;
+            $size =~ s/,//g;
+        }
+    }
+    my $mbs = dd();
+    $speed = $mbs * (1024 * 1024); # MB/s to bytes/s
+    my $transfertime = ($size / $speed) * $extra;
+    my $s = sprintf "%d", $transfertime;
+    return sprintf "0-00:00:%02d", $s if ($s < 60);
+    my $m = $s / 60;
+    $s %= 60;
+    return sprintf "0-00:%02d:%02d", $m, $s if ($m < 60);
+    my $h = $m / 60;
+    $m %= 60;
+    return sprintf "0-%02d:%02d:%02d", $h, $m, $s if ($h < 24);
+    my $d = $h / 24;
+    $h %= 24;
+    return sprintf "%d-%02d:%02d:%02d", $d, $h, $m, $s;
+}
+
+sub dd {
+    ## Returns MB/s string, e.g. "92.4".
+    ## Test connection speed by sending 1M data to destination.
+    ## Uses 'dd' and 'ssh'. Reads from '/dev/zero' on source,
+    ## and writes to '/dev/null' on destination
+    my $mbs = 0;
+    print STDERR "Testing connection speed. Might take a moment.\n";
+    system("dd if=/dev/zero count=1k bs=1M 2>tmp.stderr.tmp | ssh $nrmcomputer_user\@$nrmcomputer \'cat>/dev/null\'");
+    open my $fh, "<", "tmp.stderr.tmp" or die "could not open tmp.stderr: $!\n";
+    while(<$fh>) {
+        if (m/([\d|\.]+) MB\/s/) {
+            $mbs = $1; 
+        }
+    }
+    close($fh);
+    unlink("tmp.stderr.tmp");
+    return $mbs;
+}
+
+
+=pod
+
+=head1 NAME
+
+backup2nrmdna01 - Backup Files to NRM
+
+=head1 VERSION
+
+Version 0.1, tor 12 aug 2021 13:28:39
+
+=head1 SYNOPSIS
+
+ backup2nrmdna01 [options] /path/to/source/folder
+
+=head1 EXAMPLES (TODO: rewrite)
+
+B<Transfer files in specific folder (full path!)>
+
+  backup2nrmdna01 /proj/b1234567/delivery1234 -p /projects/XXX-projects/joebro -c snic12345 -u joebro -a -s
+
+B<Use a list of folders (full path!) from file>
+
+  backup2nrmdna01 -f <file_with_paths>
+
+B<Specify username on NRM, and e-mail address for messages (from UPPMAX)>
+
+  backup2nrmdna01 -s -u joebro -e joe.bro@email.com /proj/b1234567/delivery1234
+
+B<Submit generated slurm script, use auto-generation of estimated transfer time>
+
+  backup2nrmdna01 -s -a /proj/b1234567/delivery1234
+
+=head1 DESCRIPTION
+
+The C<backup2nrmdna01>-script generates a script (in the current working directory) with instructions 
+on how to transfer files from UPPMAX to NRM using rsync.
+
+Review the generated transfer-script and if found appropriate, submit the script to the SLURM system.
+
+The C<backup2nrmdna01>-script has a number of options that could be of use (see B<OPTIONS> below).
+
+The full path to the source folder, as well as the destination folder should be provided as arguments.
+Default destination on nrmdna01.nrm.se is /projects/XXX-projects/nrmuser/, where B<XXX> is the 
+department abbreviation (currently BIO, BOT, or ZOO), and B<nrmuser> is the user name on nrmdna01.nrm.se.
+
+Example source and destination directories:
+
+ /proj/b1234567/delivery1234 -> /projects/BIO-projects/nrmuser/delivery1234
+
+
+
+B<NOTE> One may edit a personal copy of the script to include the arguments to some options, such as
+default path to destination, NRM-user name, etc.
+
+The script will generate file C<< rsync-E<lt>projidE<gt>-E<lt>dateE<gt>.E<lt>iE<gt>.slurm >> in the current working directory.
+
+The user of the script needs to have accounts on both UPPMAX and NRM, and the script should be run on UPPMAX.
+
+No extensive error checking. Run output script manually and look at output.
+
+=head2 Transfer speed
+
+Transfer speed between UPPMAX and NRM varies erratically (0.1 - >100 MB/s).
+To estimate the time needed for the slurm script, I assume a transfer speed of 20MB/s, and add 20%.
+This value will probably need to be adjusted.
+Note: 1 Mbps = 0.125 MB/s.
+
+=head2 NRM authentication
+
+Authentication to NRM server is done using SSH-keys: Your C<rda_sa.pub> needs to be known to NRM-IT.
+
+=head1 OPTIONS
+
+=over 8
+
+=item B<-i, --infile INFILE>
+
+File with a list of directories (full path!) to be backed up.
+
+=item B<-s, --submit>
+
+Submit to cluster (calling C<sbatch>). Default: B<-nosubmit>.
+
+=item B<-e, --email=E<lt>emailE<gt>>
+
+Send messages from the cluster to <email>.
+
+=item B<-u, --nrm-user=E<lt>userE<gt>>
+
+User on NRM.
+A tip is to edit the script providing this information (if the same user is to be used each time).
+
+=item B<-p, --nrm-path=E<lt>/path/E<gt>
+
+Destination path of source folder on nrmdna01.nrm.se. Example: /projects/XXX-projects/nrmuser.
+A tip is to edit the script providing this information (if the same destination folder is to be used each time).
+
+=item B<-t, --time=E<lt>timeE<gt>>
+
+Set run time for script. Use format C<D-H:MM:SS>, e.g. C<0-3:00:00>
+
+=item B<-a, --autotime=E<lt><intE<gt>>
+
+Try to estimate optimal runtime. The estimated time is multiplied by an integer (default:3)
+to add some extra time margin. This integer can be changed using, e.g. B<-noautotime=4>.
+Default is to not use the autotime.
+
+=item B<-c, --cpuaccount=E<lt>accountnrE<gt>>
+
+Compute account number on UPPMAX to be used.
+A tip is to edit the script providing this information (if the same account is to be used each time).
+
+=item B<-x --exclude>
+
+Exclude files/folders (TODO: not yet implemented)
+
+=item B<-h, --help>
+
+Help text.
+
+=back
+
+=head1 AUTHOR
+
+Johan Nylander L<<johan.nylanderATnrm.se>>
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (c) 2016-2021 Johan Nylander
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+=cut
+
