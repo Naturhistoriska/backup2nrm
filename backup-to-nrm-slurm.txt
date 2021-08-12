@@ -1,0 +1,48 @@
+#!/bin/bash -l
+
+# Slurm script example for transferring data from
+# rackham.uppmax.uu.se to nrmdna01.nrm.se.
+#
+# NOTE: Make sure to edit below before use!
+#
+#   * snic2021-12-345  -> Change you your CPU account
+#   * 20:00:00  -> Time (hh:mm:ss) might have to be adjusted
+#   * first.last@nrm.se  -> Use your email address
+#   * nrmuser  -> Change to your NRM user name
+#   * /path/to/SOURCE  -> Change to your SOURCE folder
+#   * /projects/XXX-projects/nrmuser  -> Change to your DESTINATION folder
+#
+# See also notes on how to specify paths for rsync below.
+#
+# Test the script before running by
+#    sbatch --test-only backup-to-nrm-slurm.txt
+# Start by using
+#     sbatch backup-to-nrm-slurm.txt
+# Stop by using
+#     scancel 1234
+#     scancel -i -u $USER
+#     scancel --state=pending -u $USER
+# Monitor by using
+#    jobinfo -u $USER
+#    squeue
+#
+
+#SBATCH -J backup-to-nrm
+#SBATCH -A snic2021-12-345
+#SBATCH -t 20:00:00
+#SBATCH -p core
+#SBATCH -n 1
+#SBATCH --mail-type=ALL --mail-user=first.last@nrm.se
+
+rsync -rlDvh --progress -e ssh /path/to/SOURCE nrmuser@nrmdna01.nrm.se:/projects/XXX-projects/nrmuser
+
+# Important note on path specifications using rsync: A trailing slash ('/') on
+# the SOURCE folder means "copy the contents of this directory". Without a
+# trailing slash it means "copy the directory".
+
+# In the example above, the folder SOURCE on rackham will be copied to
+# /projects/XXX-projects/nrmuser/SOURCE on nrmdna01. On the other hand, say that
+# we added a couple of files to /path/to/SOURCE, using
+# /path/to/SOURCE/ nrmuser@nrmdna01.nrm.se:/projects/XXX-projects/nrmuser/SOURCE
+# would add those files in /projects/XXX-projects/nrmuser/SOURCE.
+# Important is the trailing slash (or not) on SOURCE.
