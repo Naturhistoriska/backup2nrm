@@ -1,6 +1,6 @@
 # backup2nrm
 
-**NOTE: The use of this script is now superceeded by the use
+**NOTE:** The use of this script is now superceeded by the use
 of [`dds_cli`](https://scilifelabdatacentre.github.io/dds_cli/).
 Current recommendation is to use that script directly on nrmdna01.nrm.se to download data.
 
