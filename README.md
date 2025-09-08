@@ -1,9 +1,10 @@
 # backup2nrm
 
-- Last modified: tor aug 12, 2021  09:13
-- Sign: JN
+**NOTE: The use of this script is now superceeded by the use
+of [`dds_cli`](https://scilifelabdatacentre.github.io/dds_cli/).
+Current recommendation is to use that script directly on nrmdna01.nrm.se to download data.
 
-## Description
+## Description (Old, "pre dds")
 
 Script for transferring UPPMAX files to backup server on NRM.
 
